@@ -39,4 +39,21 @@ The strongest missed-pair pattern was a business alias or transliterated name wi
 
 The fast generator completed all **1,732,544** test Source 1 rows, producing **253,317,953** candidate links in `data/candidates/person2/candidate_pairs_v01.tsv` (3,287,320,004 bytes). A streaming structural check confirmed one row per test Source 1 ID in source order, no duplicate IDs within lists, S2/S3 prefixes only, and a maximum of 200 candidates per row. It included all **259,452 France** rows. The file is local and ignored by Git; share it privately with Person 3, then Person 3 copies the chosen version into canonical `output/candidate_pairs.tsv`.
 
-The 200-candidate cap affected **1,037,239** queries (59.9%). This is a material recall risk. The current version is a valid candidate-generation baseline, but its full-corpus recall must be measured against a separate training index before tuning the cap or block weights.
+The 200-candidate cap affected **1,037,239** queries (59.9%). This is a material recall risk. The current version is a valid candidate-generation baseline; the separate training-index check below quantifies its recall on labeled rows.
+
+## Full training-index recall check
+
+A separate index of all **10,320,219** training Source 2/3 records was used to query the first 5,000 ground-truth Source 1 IDs (2,982 US and 2,018 India). This sample is the first 5,000 ground-truth rows, not a randomized validation split; Person 1's fixed split remains the evaluation authority.
+
+| Setting | Pair recall overall | US | India | Candidate links per 5,000 queries |
+| --- | ---: | ---: | ---: | ---: |
+| block size 1,000; cap 200 (v01) | 91.94% | 94.99% | 87.52% | 693,752 |
+| block size 1,000; cap 500 | 93.41% | 96.26% | 89.29% | 1,338,069 |
+| block size 1,000; cap 1,000 | 94.18% | 96.73% | 90.48% | 1,889,443 |
+| block size 3,000; cap 200 | 91.72% | 94.53% | 87.65% | 716,001 |
+
+At cap 200, at least one true match was retrieved for 99.05% of non-singleton rows, but all true matches were retrieved for only 78.40%. Raising the block-size limit while keeping the cap at 200 slightly reduced recall; it admitted more weak candidates that displaced stronger ones.
+
+The next Member 2 experiment should add carefully sized **address-only locality pairs** and **leading-zero-normalized house-number keys**, then measure full-index block sizes and recall on Person 1's fixed split. In a diagnostic of the 1,004 true pairs missed even with cap 1,000, 716 shared at least one prospective new key. This is only a potential gain: common blocks and candidate caps may prevent retrieval. Avoid rebuilding the test index until a training-index experiment shows a clear improvement.
+
+The existing v01 test file is a valid first handoff for Person 3. It can be shared as `data/candidates/person2/candidate_pairs_v01.zip` (1,383,094,551 bytes), which contains `candidate_pairs.tsv`; the ZIP and TSV stay outside Git. Verify the ZIP SHA-256 against `candidate_pairs_v01.zip.sha256` after transfer.
