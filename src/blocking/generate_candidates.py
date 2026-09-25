@@ -27,13 +27,13 @@ def connect(path):
     con = sqlite3.connect(path)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
-    con.execute("PRAGMA temp_store=MEMORY")
+    # CREATE INDEX sorts tens of millions of keys; keep its temp B-tree on disk.
+    con.execute("PRAGMA temp_store=FILE")
     con.execute("PRAGMA cache_size=-131072")
     return con
 
 
 def build_index(con, target_paths):
-    signatures = [str(path.resolve()) + ":" + str(path.stat().st_size) for path in target_paths]
     con.executescript("""
         DROP TABLE IF EXISTS blocks;
         DROP TABLE IF EXISTS targets;
@@ -57,9 +57,15 @@ def build_index(con, target_paths):
                 con.commit()
                 print(f"  {count:,} target rows", flush=True)
     con.commit()
-    print("Creating block index; this can take time on the full dataset", flush=True)
-    con.execute("CREATE INDEX blocks_key_idx ON blocks(key)")
-    con.execute("CREATE TABLE metadata (target_count INTEGER, source_signatures TEXT)")
+    finish_index(con, target_paths, count)
+
+
+def finish_index(con, target_paths, count):
+    signatures = [str(path.resolve()) + ":" + str(path.stat().st_size) for path in target_paths]
+    print("Creating block index on disk; this can take time on the full dataset", flush=True)
+    con.execute("CREATE INDEX IF NOT EXISTS blocks_key_idx ON blocks(key)")
+    con.execute("CREATE TABLE IF NOT EXISTS metadata (target_count INTEGER, source_signatures TEXT)")
+    con.execute("DELETE FROM metadata")
     con.execute("INSERT INTO metadata VALUES (?, ?)", (count, json.dumps(signatures)))
     con.commit()
     print(f"Indexed {count:,} target rows", flush=True)
@@ -122,6 +128,7 @@ def main():
     parser.add_argument("--index", type=Path, required=True, help="SQLite cache, one per train/test split")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rebuild-index", action="store_true")
+    parser.add_argument("--resume-index", action="store_true", help="Finish indexing already-loaded targets after an interrupted CREATE INDEX")
     parser.add_argument("--max-block-size", type=int, default=1000)
     parser.add_argument("--max-candidates", type=int, default=200)
     parser.add_argument("--max-queries", type=int, help="Development only; never use for final submission")
@@ -132,7 +139,12 @@ def main():
     con = connect(args.index)
     try:
         ready = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='metadata'").fetchone()
-        if args.rebuild_index or not ready:
+        if args.resume_index:
+            if ready or not con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blocks'").fetchone():
+                raise ValueError("--resume-index requires loaded blocks and no metadata table")
+            count = con.execute("SELECT COUNT(*) FROM targets").fetchone()[0]
+            finish_index(con, (args.source2, args.source3), count)
+        elif args.rebuild_index or not ready:
             build_index(con, (args.source2, args.source3))
         else:
             actual = con.execute("SELECT source_signatures FROM metadata").fetchone()[0]

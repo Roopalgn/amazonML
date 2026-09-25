@@ -18,6 +18,8 @@ python src/blocking/generate_candidates.py `
 
 The first run builds the index; later runs reuse it. Keep separate indexes for train and test. Use `--max-queries 5000` only for quick development, never for a file passed to Person 3 as the full candidate set.
 
+If an index build is interrupted after loading all target rows but before the lookup index is ready, rerun the same command with `--resume-index` to finish sorting without rereading the source files. This is valid only when both source files were completely loaded.
+
 Run `python src/blocking/smoke_test.py` for a small functional test.
 
 ## Contract for Person 3
