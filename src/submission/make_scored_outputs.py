@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import joblib
 import shutil
 import sqlite3
 import sys
@@ -31,6 +32,7 @@ for path in (BLOCKING_ROOT, MATCHING_ROOT):
 
 from baseline_matcher import format_id_list, keep_valid_match_ids, parse_id_list
 from block_keys import LEGAL, normalize
+from train_pair_ranker import FEATURE_NAMES, make_record as make_ranker_record, pair_features
 
 
 DEFAULT_RESOURCE = REPO_ROOT / "dataset" / "6ab10eb3b23ba_student_resource" / "student_resource" / "dataset"
@@ -248,7 +250,11 @@ def write_scored_outputs(
     batch_size: int,
     rebuild_target_store: bool,
     scores_output: Path | None,
+    pair_model_path: Path | None,
 ) -> dict[str, int | float | str]:
+    model_bundle = joblib.load(pair_model_path) if pair_model_path is not None else None
+    if model_bundle is not None and tuple(model_bundle.get("feature_names", ())) != FEATURE_NAMES:
+        raise ValueError("Pair model feature schema does not match this code version")
     con = connect_store(target_store)
     try:
         ensure_target_store(con, source2, source3, rebuild_target_store)
@@ -300,6 +306,7 @@ def write_scored_outputs(
                             max_matches,
                             score_candidate_limit,
                             stats,
+                            model_bundle,
                         )
                         batch.clear()
                         if int(stats["rows"]) % 10000 == 0:
@@ -315,6 +322,7 @@ def write_scored_outputs(
                         max_matches,
                         score_candidate_limit,
                         stats,
+                        model_bundle,
                     )
         finally:
             if score_handle is not None:
@@ -336,6 +344,7 @@ def process_batch(
     max_matches: int | None,
     score_candidate_limit: int | None,
     stats: dict[str, int | float | str],
+    model_bundle: dict | None = None,
 ) -> None:
     candidate_ids = {
         candidate_id
@@ -352,15 +361,34 @@ def process_batch(
 
         scored: list[tuple[str, float]] = []
         scored_candidates = candidates[:score_candidate_limit] if score_candidate_limit is not None else candidates
-        for candidate_id in scored_candidates:
+        ranker_pairs = []
+        for rank, candidate_id in enumerate(scored_candidates):
             target = target_features.get(candidate_id)
             if target is None:
                 stats["missing_target_links"] = int(stats["missing_target_links"]) + 1
                 continue
-            score = score_pair(source, target)
-            scored.append((candidate_id, score))
+            if model_bundle is None:
+                score = score_pair(source, target)
+                scored.append((candidate_id, score))
+                if score_writer is not None:
+                    score_writer.writerow([source1_id, candidate_id, f"{score:.6f}"])
+            else:
+                ranker_source = make_ranker_record(source.entity_id, source.name, source.address, source.country)
+                ranker_target = make_ranker_record(target.entity_id, target.name, target.address, target.country)
+                ranker_pairs.append((candidate_id, ranker_source, ranker_target, rank, len(scored_candidates)))
+
+        if model_bundle is not None and ranker_pairs:
+            import numpy as np
+
+            matrix = np.asarray(
+                [pair_features(src, target, rank, count) for _, src, target, rank, count in ranker_pairs],
+                dtype=np.float32,
+            )
+            probabilities = model_bundle["model"].predict_proba(matrix)[:, 1]
+            scored = [(item[0], float(probability)) for item, probability in zip(ranker_pairs, probabilities)]
             if score_writer is not None:
-                score_writer.writerow([source1_id, candidate_id, f"{score:.6f}"])
+                for candidate_id, score in scored:
+                    score_writer.writerow([source1_id, candidate_id, f"{score:.6f}"])
 
         selected = [candidate_id for candidate_id, score in sorted(scored, key=lambda item: (-item[1], item[0])) if score >= threshold]
         if max_matches is not None:
@@ -383,7 +411,7 @@ def main() -> int:
     parser.add_argument("--source3", type=Path, default=DEFAULT_SOURCE3)
     parser.add_argument("--target-store", type=Path, default=DEFAULT_STORE)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--threshold", type=float, default=0.82)
+    parser.add_argument("--pair-model", type=Path, default=None, help="Saved bundle from train_pair_ranker.py; uses its validation-selected threshold unless --threshold is supplied.")
     parser.add_argument("--max-matches", type=int, default=None)
     parser.add_argument(
         "--score-candidate-limit",
@@ -394,9 +422,10 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=2000)
     parser.add_argument("--rebuild-target-store", action="store_true")
     parser.add_argument("--scores-output", type=Path, default=None)
+    parser.add_argument("--threshold", type=float, default=None)
     args = parser.parse_args()
 
-    if not 0.0 <= args.threshold <= 1.0:
+    if args.threshold is not None and not 0.0 <= args.threshold <= 1.0:
         parser.error("--threshold must be between 0 and 1")
     if args.batch_size < 1:
         parser.error("--batch-size must be positive")
@@ -405,6 +434,8 @@ def main() -> int:
     if args.score_candidate_limit is not None and args.score_candidate_limit < 1:
         parser.error("--score-candidate-limit must be positive")
 
+    model_bundle = joblib.load(args.pair_model) if args.pair_model is not None else None
+    threshold = args.threshold if args.threshold is not None else (float(model_bundle["threshold"]) if model_bundle else 0.82)
     stats = write_scored_outputs(
         candidate_input=args.candidate_input,
         source1=args.source1,
@@ -412,12 +443,13 @@ def main() -> int:
         source3=args.source3,
         target_store=args.target_store,
         output_dir=args.output_dir,
-        threshold=args.threshold,
+        threshold=threshold,
         max_matches=args.max_matches,
         score_candidate_limit=args.score_candidate_limit,
         batch_size=args.batch_size,
         rebuild_target_store=args.rebuild_target_store,
         scores_output=args.scores_output,
+        pair_model_path=args.pair_model,
     )
     print(json.dumps(stats, indent=2))
     return 0
