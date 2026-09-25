@@ -3,3 +3,8 @@
 __MACOSX/
 **/__MACOSX/
 dataset/
+output/
+data/candidates/
+data/features/
+__pycache__/
+**/__pycache__/
