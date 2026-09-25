@@ -117,6 +117,46 @@ Optional useful flags:
 
 The first full run is expected to take time because it indexes the full test Source 2/3 files.
 
+## Train And Use The Supervised Pair Ranker
+
+Install the matching dependencies once:
+
+```bash
+python -m pip install -r src/matching/requirements.txt
+```
+
+Train on candidate rows built from the **training** Source 2/3 data. The script
+reserves Person 1's fixed validation IDs and reports both the existing heuristic
+and learned ranker on that same holdout:
+
+```bash
+python src/matching/train_pair_ranker.py \
+  --candidates data/candidates/person2/candidate_train_5k.tsv
+```
+
+The model and report are written under ignored `data/features/`. Current local
+validation reached macro F0.5 0.860 on the 5k candidate sample (0.837 when
+scoring only its first 50 candidates), compared with 0.666/0.661 for the old
+heuristic. These are local holdout measurements, **not leaderboard scores**;
+they do not guarantee a 0.9 public result. Candidate generation recall remains
+the main ceiling, so keep the full candidate list and score more than 50 when
+runtime allows.
+
+Use the trained model for the full test candidate file; its validation-selected
+threshold is loaded automatically. Override it explicitly only after validation:
+
+```bash
+python src/submission/make_scored_outputs.py \
+  --candidate-input data/candidates/person2/candidate_pairs_v01.tsv \
+  --pair-model data/features/person2_pair_ranker.joblib \
+  --output-dir output
+```
+
+For a quick iteration, append `--score-candidate-limit 50`. For the final
+candidate, omit that limit to score every candidate in each row. A higher
+validation score alone is not a reason to upload; validate output formatting and
+then check the actual leaderboard score.
+
 ## Validate Before Upload
 
 Run from the repo root:
