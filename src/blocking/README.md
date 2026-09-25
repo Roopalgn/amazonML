@@ -34,3 +34,9 @@ The output is tab-separated with exactly `source1_entity_id` and `candidate_enti
 On a development sample of 5,000 labeled Source 1 rows and 58,477 Source 2/3 rows (all known positives for those queries plus a small background sample), known-positive pair recall improved from **80.7% to 94.8%** after adding address blocks and preserving non-Latin text. At least one true match was found for **99.4%** of non-singleton rows. This sample enriches the index with positives and has fewer competing records than the full corpus, so these figures **are not full-dataset recall estimates**. Full-index candidate recall and candidate volume remain the next gate.
 
 The strongest missed-pair pattern was a business alias or transliterated name with a similar address. Address-only blocks recover many such cases. Further work should examine false negatives by country, large-block skips, and missing addresses before adding expensive fuzzy retrieval.
+
+## Full test run, version 01
+
+The fast generator completed all **1,732,544** test Source 1 rows, producing **253,317,953** candidate links in `data/candidates/person2/candidate_pairs_v01.tsv` (3,287,320,004 bytes). A streaming structural check confirmed one row per test Source 1 ID in source order, no duplicate IDs within lists, S2/S3 prefixes only, and a maximum of 200 candidates per row. It included all **259,452 France** rows. The file is local and ignored by Git; share it privately with Person 3, then Person 3 copies the chosen version into canonical `output/candidate_pairs.tsv`.
+
+The 200-candidate cap affected **1,037,239** queries (59.9%). This is a material recall risk. The current version is a valid candidate-generation baseline, but its full-corpus recall must be measured against a separate training index before tuning the cap or block weights.
