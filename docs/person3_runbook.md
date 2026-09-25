@@ -95,6 +95,28 @@ python src/matching/threshold_search.py \
 
 Use the best validation threshold as a candidate for leaderboard submission, but keep a precision-focused variant for the reserved daily slot.
 
+## Generate Scored Outputs Directly From Person 2 Candidates
+
+For the full handoff file from Person 2, prefer the streaming scorer. It builds a local SQLite cache of Source 2/3 records, streams `candidate_pairs.tsv` in batches, and writes both official output files.
+
+```bash
+python src/submission/make_scored_outputs.py \
+  --candidate-input data/candidates/person2/candidate_pairs_v01.tsv \
+  --threshold 0.82 \
+  --score-candidate-limit 50 \
+  --output-dir output
+```
+
+Optional useful flags:
+
+- `--rebuild-target-store`: rebuild the Source 2/3 cache if the dataset changes.
+- `--score-candidate-limit N`: score only the first N candidates per Source 1 while preserving the full candidate list in `output/candidate_pairs.tsv`. Use this for rapid leaderboard iteration on the huge v01 file.
+- `--max-matches N`: cap final matches per Source 1 after scoring.
+- `--scores-output data/features/scored_candidates_v01.tsv`: also write per-candidate scores. This can be very large on the full candidate file.
+- `--batch-size N`: tune memory/runtime tradeoff.
+
+The first full run is expected to take time because it indexes the full test Source 2/3 files.
+
 ## Validate Before Upload
 
 Run from the repo root:
