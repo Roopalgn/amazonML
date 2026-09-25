@@ -50,6 +50,8 @@ class RecordFeatures:
     name_tokens: frozenset[str]
     address_tokens: frozenset[str]
     address_numbers: frozenset[str]
+    name_grams: frozenset[str]
+    address_grams: frozenset[str]
 
 
 def source_signature(paths: Iterable[Path]) -> str:
@@ -82,6 +84,13 @@ def number_tokens(value: str) -> frozenset[str]:
     return frozenset(token for token in normalize(value).split() if token.isdigit())
 
 
+def character_grams(value: str, size: int = 3) -> frozenset[str]:
+    compact = "".join(normalize(value).split())
+    if len(compact) < size:
+        return frozenset({compact}) if compact else frozenset()
+    return frozenset(compact[index : index + size] for index in range(len(compact) - size + 1))
+
+
 def make_features(entity_id: str, name: str, address: str, country: str) -> RecordFeatures:
     return RecordFeatures(
         entity_id=entity_id,
@@ -91,6 +100,8 @@ def make_features(entity_id: str, name: str, address: str, country: str) -> Reco
         name_tokens=useful_tokens(name, drop_legal=True),
         address_tokens=useful_tokens(address),
         address_numbers=number_tokens(address),
+        name_grams=character_grams(name),
+        address_grams=character_grams(address),
     )
 
 
@@ -106,23 +117,33 @@ def overlap(left: frozenset[str], right: frozenset[str]) -> float:
     return len(left & right) / min(len(left), len(right))
 
 
+def dice(left: frozenset[str], right: frozenset[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return 2.0 * len(left & right) / (len(left) + len(right))
+
+
 def score_pair(source1: RecordFeatures, target: RecordFeatures) -> float:
     """Return a precision-oriented heuristic score in [0, 1]."""
 
     name_j = jaccard(source1.name_tokens, target.name_tokens)
     name_o = overlap(source1.name_tokens, target.name_tokens)
+    name_d = dice(source1.name_grams, target.name_grams)
     address_j = jaccard(source1.address_tokens, target.address_tokens)
     address_o = overlap(source1.address_tokens, target.address_tokens)
+    address_d = dice(source1.address_grams, target.address_grams)
     number_o = overlap(source1.address_numbers, target.address_numbers)
     country_match = 1.0 if source1.country and source1.country == target.country else 0.0
 
     score = (
-        0.34 * name_j
-        + 0.24 * name_o
-        + 0.18 * address_j
-        + 0.12 * address_o
-        + 0.07 * number_o
-        + 0.05 * country_match
+        0.24 * name_j
+        + 0.18 * name_o
+        + 0.20 * name_d
+        + 0.12 * address_j
+        + 0.08 * address_o
+        + 0.12 * address_d
+        + 0.03 * number_o
+        + 0.03 * country_match
     )
 
     if source1.name and source1.name == target.name:
@@ -193,16 +214,22 @@ def ensure_target_store(con: sqlite3.Connection, source2: Path, source3: Path, r
         raise ValueError("Target store belongs to different source files; use --rebuild-target-store")
 
 
-def load_source1_features(path: Path) -> dict[str, RecordFeatures]:
-    records: dict[str, RecordFeatures] = {}
+def iter_source1_features(path: Path):
+    """Stream Source-1 features in file order.
+
+    Person 2's candidate generator writes one row per Source-1 record in the
+    same order as ``test_source1.tsv``.  Keeping that contract lets the scorer
+    avoid retaining 1.7 million feature objects (which previously caused a
+    multi-hour, multi-gigabyte run).
+    """
+
     for row in iter_source(path):
-        records[row["entity_id"]] = make_features(
+        yield make_features(
             row["entity_id"],
             row["business_name"],
             row["business_address"],
             row["country"],
         )
-    return records
 
 
 def fetch_targets(con: sqlite3.Connection, candidate_ids: set[str]) -> dict[str, RecordFeatures]:
@@ -252,9 +279,9 @@ def write_scored_outputs(
     con = connect_store(target_store)
     try:
         ensure_target_store(con, source2, source3, rebuild_target_store)
-        source1_features = load_source1_features(source1)
         output_dir.mkdir(parents=True, exist_ok=True)
         matching_path = output_dir / "matching_results.tsv"
+        matching_partial_path = output_dir / "matching_results.tsv.partial"
         candidate_path = output_dir / "candidate_pairs.tsv"
         if candidate_input.resolve() != candidate_path.resolve():
             print(f"Copying candidate file to {candidate_path}", flush=True)
@@ -282,17 +309,28 @@ def write_scored_outputs(
         }
 
         try:
-            with matching_path.open("w", encoding="utf-8", newline="") as match_handle:
+            source1_rows = iter_source1_features(source1)
+            candidate_rows = iter_candidate_rows(candidate_input)
+            with matching_partial_path.open("w", encoding="utf-8", newline="") as match_handle:
                 match_writer = csv.writer(match_handle, delimiter="\t", lineterminator="\n")
                 match_writer.writerow(["source1_entity_id", "matched_entity_ids"])
 
-                batch: list[tuple[str, tuple[str, ...]]] = []
-                for item in iter_candidate_rows(candidate_input):
-                    batch.append(item)
+                batch: list[tuple[RecordFeatures, tuple[str, ...]]] = []
+                for candidate_source1_id, candidates in candidate_rows:
+                    try:
+                        source = next(source1_rows)
+                    except StopIteration as exc:
+                        raise ValueError("candidate file has more Source-1 rows than source1 TSV") from exc
+                    if source.entity_id != candidate_source1_id:
+                        raise ValueError(
+                            "candidate/source1 order mismatch at row "
+                            f"{int(stats['rows']) + len(batch) + 2}: "
+                            f"candidate={candidate_source1_id}, source1={source.entity_id}"
+                        )
+                    batch.append((source, candidates))
                     if len(batch) >= batch_size:
                         process_batch(
                             batch,
-                            source1_features,
                             con,
                             match_writer,
                             score_writer,
@@ -307,7 +345,6 @@ def write_scored_outputs(
                 if batch:
                     process_batch(
                         batch,
-                        source1_features,
                         con,
                         match_writer,
                         score_writer,
@@ -316,9 +353,19 @@ def write_scored_outputs(
                         score_candidate_limit,
                         stats,
                     )
+                try:
+                    extra_source = next(source1_rows)
+                except StopIteration:
+                    pass
+                else:
+                    raise ValueError(
+                        "source1 TSV has more rows than the candidate file; "
+                        f"first missing candidate row is {extra_source.entity_id}"
+                    )
         finally:
             if score_handle is not None:
                 score_handle.close()
+        matching_partial_path.replace(matching_path)
     finally:
         con.close()
 
@@ -327,8 +374,7 @@ def write_scored_outputs(
 
 
 def process_batch(
-    batch: list[tuple[str, tuple[str, ...]]],
-    source1_features: dict[str, RecordFeatures],
+    batch: list[tuple[RecordFeatures, tuple[str, ...]]],
     con: sqlite3.Connection,
     match_writer,
     score_writer,
@@ -343,12 +389,8 @@ def process_batch(
         for candidate_id in (ids[:score_candidate_limit] if score_candidate_limit is not None else ids)
     }
     target_features = fetch_targets(con, candidate_ids)
-    for source1_id, candidates in batch:
-        source = source1_features.get(source1_id)
-        if source is None:
-            stats["missing_source1_rows"] = int(stats["missing_source1_rows"]) + 1
-            match_writer.writerow([source1_id, ""])
-            continue
+    for source, candidates in batch:
+        source1_id = source.entity_id
 
         scored: list[tuple[str, float]] = []
         scored_candidates = candidates[:score_candidate_limit] if score_candidate_limit is not None else candidates

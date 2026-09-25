@@ -99,6 +99,8 @@ Use the best validation threshold as a candidate for leaderboard submission, but
 
 For the full handoff file from Person 2, prefer the streaming scorer. It builds a local SQLite cache of Source 2/3 records, streams `candidate_pairs.tsv` in batches, and writes both official output files.
 
+The scorer consumes the candidate file in the same Source-1 order as `test_source1.tsv`; it checks this alignment and aborts on a mismatch. It streams Source-1 features instead of retaining the full 1.7-million-row table in memory. The matching file is written to a temporary partial path and renamed only after the complete run succeeds, so an interrupted run is never an upload-ready result.
+
 ```bash
 python src/submission/make_scored_outputs.py \
   --candidate-input data/candidates/person2/candidate_pairs_v01.tsv \
