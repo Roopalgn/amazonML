@@ -6,6 +6,8 @@ This code generates candidate lists from the **provided TSV data only**. It uses
 
 From the repository root, using the official local resource package:
 
+In PyCharm, select the local interpreter at `.venv/Scripts/python.exe`. This checkout's local `.venv` has Python 3.13 and DuckDB 1.5.5; it is ignored by Git. Teammates can create their own environment using `requirements.txt`.
+
 ```powershell
 $resource = 'dataset/6ab10eb3b23ba_student_resource/student_resource/dataset'
 python -m pip install -r src/blocking/requirements.txt

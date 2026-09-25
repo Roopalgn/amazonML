@@ -3,3 +3,5 @@
 __MACOSX/
 **/__MACOSX/
 dataset/
+.venv/
+.idea/
