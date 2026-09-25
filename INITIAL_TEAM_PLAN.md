@@ -1,249 +1,297 @@
-# Initial Team Plan
+# Initial Three-Person Team Plan
 
-This plan is for a three-person team working separately on three GitHub branches during the first phase of the Amazon ML Challenge 2026. The goal of this phase is to produce a clean baseline quickly, agree on shared interfaces, and avoid duplicate or conflicting work.
+This plan is based on the local challenge package in `dataset/6ab10eb3b23ba_student_resource/student_resource/`. The dataset is large, the leaderboard allows only 5 submissions per day, and the three teammates will work on separate GitHub branches. The first phase should prioritize a valid end-to-end pipeline, controlled leaderboard iteration, and strict separation of ownership.
 
-## First Phase Objective
+## Current Dataset Facts
 
-Build an end-to-end baseline for business entity resolution:
+| File | Rows | Countries | Notes |
+| --- | ---: | --- | --- |
+| `dataset/train/train_source1.tsv` | 2,206,821 | India, US | Reference source, no missing fields observed |
+| `dataset/train/train_source2.tsv` | 5,034,616 | India, US | 168,967 missing `business_address` values |
+| `dataset/train/train_source3.tsv` | 5,285,603 | India, US | 175,916 missing `business_address` values |
+| `dataset/test/test_source1.tsv` | 1,732,544 | France, India, US | Every row must appear in `matching_results.tsv` |
+| `dataset/test/test_source2.tsv` | 4,887,273 | France, India, US | 129,408 missing `business_address` values |
+| `dataset/test/test_source3.tsv` | 5,082,316 | France, India, US | 136,098 missing `business_address` values |
+| `dataset/train/train_ground_truth.tsv` | 2,206,821 | India, US | 123,247 singletons, about 5.58% |
 
-- Read the provided tab-separated challenge data.
-- Normalize business names and addresses.
-- Generate candidate pairs through blocking.
-- Score candidate pairs with a simple baseline.
-- Produce `matching_results.tsv` in the required format.
-- Save `candidate_pairs.tsv` for audit and final packaging.
-- Keep the pipeline reproducible from raw data to submission.
+Ground-truth match count distribution:
+
+```text
+0: 123247
+1: 119157
+2: 375212
+3: 530841
+4: 484115
+5: 321957
+6: 164868
+7: 63968
+8: 18680
+9: 4205
+10: 534
+11: 37
+```
+
+Important implications:
+
+- Do not create all pairwise comparisons. The full Cartesian space is impossible.
+- Use `country` as a blocking feature, but keep the logic open-set because test includes `France`, which is unseen in training.
+- Address handling must tolerate missing addresses in Source 2 and Source 3.
+- The official output files are list-based, one row per Source 1 entity, not one row per candidate pair.
+- The public leaderboard is only directional; final ranking depends on the private leaderboard.
+
+## Phase 1 Objective
+
+Within the first working block, produce a reproducible baseline that:
+
+- Reads the official TSV files with `sep="\t"`.
+- Builds candidate lists for all test Source 1 entities.
+- Generates `output/candidate_pairs.tsv`.
+- Generates `output/matching_results.tsv`.
+- Passes the official validator.
+- Uses no external lookups, APIs, geocoding, or third-party business databases.
+- Logs local validation and leaderboard results for every submission.
 
 ## Branch Ownership
 
-Each person works on a separate branch and owns one track.
+Each person works on one branch. Nobody should edit another person's owned files without agreement.
 
-| Person | Branch | Primary Ownership |
+| Person | Branch | Main Output | Primary Role |
+| --- | --- | --- | --- |
+| Person 1 | `eda-validation-contract` | validation split, scorer, dataset notes | Data profiling and local evaluation |
+| Person 2 | `blocking-candidate-generation` | candidate generation code and candidate lists | Blocking and retrieval |
+| Person 3 | `matching-submission-pipeline` | scoring, thresholding, final submission files | Matching and leaderboard submissions |
+
+`main` should stay stable. Merge only code that runs, has a clear owner, and does not break the agreed command-line interfaces.
+
+## File Ownership Rules
+
+To prevent one person's work from affecting another's task, use owned directories.
+
+| Path | Owner | Rule |
 | --- | --- | --- |
-| Person 1 | `eda-data-contract` | Data inspection, schema notes, validation split |
-| Person 2 | `blocking-candidates` | Normalization, blocking, `candidate_pairs.tsv` |
-| Person 3 | `baseline-submission` | Match scoring, singleton handling, `matching_results.tsv` |
+| `src/data/` | Person 1 | Shared loading/schema utilities only |
+| `src/eval/` | Person 1 | Local scorer and validation split logic |
+| `docs/dataset_profile.md` | Person 1 | Dataset observations and schema notes |
+| `src/blocking/` | Person 2 | Candidate generation and blocking experiments |
+| `data/candidates/person2/` | Person 2 | Candidate experiment outputs |
+| `src/matching/` | Person 3 | Candidate scoring, thresholds, singleton decisions |
+| `src/submission/` | Person 3 | Output formatting and submission packaging |
+| `output/` | Person 3 | Canonical files used for validation/submission |
+| `docs/submission_log.md` | Person 3 | Every local and leaderboard attempt |
+| `notebooks/<person-name>/` | Individual | Scratch only, never the production pipeline |
 
-Use small, frequent commits. Open pull requests early, even if the work is still rough, so the rest of the team can see the direction.
+Canonical files in `output/` are updated only by Person 3 after pulling the latest candidate file from Person 2.
 
-## Shared Folder Structure
+## Official Output Contracts
 
-Use this structure unless the team agrees to change it before coding:
+### `output/matching_results.tsv`
 
-```text
-data/
-  raw/                  # untouched challenge files, not committed if large
-  processed/            # cleaned/intermediate files
-  candidates/           # candidate pair files from blocking
-  submissions/          # leaderboard-ready matching_results.tsv files
-docs/
-  notes/                # EDA notes, assumptions, experiment logs
-src/
-  data/                 # loading and schema utilities
-  features/             # normalization and similarity features
-  blocking/             # blocking logic
-  modeling/             # scoring, thresholds, model code
-  submission/           # output formatting and validation helpers
-notebooks/
-  scratch/              # personal notebooks only
-```
-
-Do not commit large raw data files unless the challenge explicitly requires it and the team agrees.
-
-## Shared File Contracts
-
-Agree to these interfaces before building real logic. This lets the three branches work in parallel.
-
-### `candidate_pairs.tsv`
-
-Produced by Person 2 and consumed by Person 3.
-
-Required columns:
+This is the only file uploaded to the leaderboard.
 
 ```text
-source_1_id
-candidate_source
-candidate_id
-block_key
-name_similarity
-address_similarity
-candidate_score
+source1_entity_id	matched_entity_ids
+S1-00001	S2-00047,S3-00812
+S1-00002	
 ```
 
 Rules:
 
-- All files must be tab-separated.
-- All IDs must be read and written as strings.
-- `candidate_source` must identify whether the candidate came from Source 2 or Source 3.
-- `candidate_score` may start as a simple heuristic score and improve later.
-- Keep one row per candidate pair.
-- Include candidates broadly enough to protect recall; the matching stage will filter.
+- Tab-separated.
+- Exact header: `source1_entity_id`, `matched_entity_ids`.
+- One row for every test Source 1 entity.
+- Empty `matched_entity_ids` means predicted singleton.
+- Matched IDs must only be from test Source 2 or Source 3.
+- No duplicate IDs inside a row.
 
-### `matching_results.tsv`
+### `output/candidate_pairs.tsv`
 
-Produced by Person 3.
-
-Expected shape:
+This is included in the final zip and audited. It should be the candidate set actually fed into the matching model.
 
 ```text
-source_1_id
-matches
+source1_entity_id	candidate_entity_ids
+S1-00001	S2-00047,S2-00193,S3-00812,S3-00999
+S1-00002	
 ```
 
 Rules:
 
-- One row per Source 1 entity.
-- `matches` should contain the predicted matching Source 2 / Source 3 IDs in the required comma-separated format.
-- Use an empty value for predicted singletons.
-- Output must be validated before any leaderboard upload.
+- Tab-separated.
+- Exact header: `source1_entity_id`, `candidate_entity_ids`.
+- One row for every test Source 1 entity.
+- Final matches should be a subset of candidates.
+- This file is not the internal feature table. If Person 2 or Person 3 needs row-per-pair features, save them separately under `data/candidates/person2/` or `data/features/`.
 
-## Person 1: Data And EDA
+## Required Validation Command
 
-Main responsibility: understand the data and prevent schema surprises.
+Run from `dataset/6ab10eb3b23ba_student_resource/student_resource/`:
+
+```bash
+python3 utils/validate_submission.py \
+  --matching output/matching_results.tsv \
+  --candidate output/candidate_pairs.tsv \
+  --test-dir dataset/test
+```
+
+For deeper diagnostics, use `--check-ids`, but expect higher memory use on the full test set.
+
+## Submission Budget Policy
+
+The team has 5 leaderboard submissions per day. Use them deliberately but early enough to learn from feedback.
+
+Daily submission budget:
+
+| Slot | Purpose | Rule |
+| --- | --- | --- |
+| 1 | First valid baseline | Submit as soon as validator passes |
+| 2 | Blocking improvement | Submit only if candidate recall/local score improves |
+| 3 | Matching threshold/model change | Submit only if local validation improves or error analysis justifies it |
+| 4 | Conservative robust candidate | Submit a precision-focused version for private leaderboard safety |
+| 5 | Reserved final slot | Keep unused until late day unless a major improvement appears |
+
+Submission rules:
+
+- Person 3 is the only uploader unless the team explicitly delegates.
+- Every submission must have a row in `docs/submission_log.md`.
+- Never submit a file that fails the validator.
+- Never spend a submission on formatting checks; the local validator exists for that.
+- Do not chase tiny public leaderboard gains if local validation suggests overfitting.
+- Keep the best public submission file archived with the commit hash that produced it.
+
+Submission log fields:
+
+```text
+timestamp_ist
+submission_number_for_day
+branch
+commit_hash
+candidate_version
+matching_version
+local_macro_f0_5
+public_score
+change_summary
+decision_next
+```
+
+## Person 1: Data, Validation, And Scoring
+
+Goal: make the team compare experiments consistently.
 
 Tasks:
 
-- Inspect all provided files and column names.
-- Confirm the exact ID columns for Source 1, Source 2, and Source 3.
-- Confirm whether names and addresses are split or raw strings.
-- Check missing values, duplicates, text noise, file sizes, and source-wise counts.
-- Create a shared validation split from the training labels.
-- Write short notes on common name/address patterns and likely singleton behavior.
-- Build or document a simple local scoring approach that mirrors macro F0.5 as closely as possible.
+- Confirm schema and row counts from the official files.
+- Create a fixed validation split from `train_ground_truth.tsv`.
+- Preserve country distribution in validation if feasible.
+- Include France-aware notes even though France has no training labels.
+- Implement or document a local macro F0.5 scorer.
+- Track singleton performance separately from non-singleton performance.
+- Profile name/address noise by country.
+- Create a small sampled development set for fast debugging.
 
 Deliverables:
 
-- `docs/notes/data_overview.md`
-- `data/processed/validation_source_1_ids.txt`
-- Initial schema notes for all teammates
+- `docs/dataset_profile.md`
+- `data/processed/validation_source1_ids.txt`
+- `data/processed/dev_sample_source1_ids.txt`
+- `src/eval/macro_f05.py`
+- `src/data/io.py`
+
+Do not:
+
+- Change Person 2's blocking logic.
+- Change Person 3's submission thresholds.
+- Create a different validation split after the team starts comparing results.
 
 ## Person 2: Blocking And Candidate Generation
 
-Main responsibility: generate high-recall candidate pairs.
+Goal: generate high-recall candidates without exploding memory or runtime.
 
 Tasks:
 
-- Build reusable normalization utilities for business names and addresses.
-- Create simple blocking keys from normalized name and address text.
-- Generate a first candidate file using exact or near-exact normalized name/address keys.
-- Add broader blocking strategies after the first baseline works.
-- Track candidate counts per Source 1 entity.
-- Save every major candidate-generation version with a meaningful filename.
+- Build normalization for `business_name` and `business_address`.
+- Use country-aware blocking while allowing unseen country labels.
+- Handle missing Source 2/3 addresses with name-heavy fallback blocks.
+- Start with cheap blocks:
+  - normalized country + strong name token
+  - normalized country + address numeric tokens
+  - normalized country + postal/PIN-like tokens where present
+  - normalized country + first significant name token + locality token
+- Add fuzzy/TF-IDF retrieval only after the first valid candidate file exists.
+- Report candidate coverage on training validation.
+- Export the official list-format `candidate_pairs.tsv`.
+- Save internal pair/feature files separately.
 
 Deliverables:
 
-- `src/features/normalization.py`
 - `src/blocking/generate_candidates.py`
-- `data/candidates/candidate_pairs.tsv`
-- Notes explaining blocking keys and candidate counts
+- `src/blocking/block_keys.py`
+- `data/candidates/person2/candidate_pairs_<version>.tsv`
+- `data/candidates/person2/candidate_stats_<version>.md`
 
-Guiding principle:
+Do not:
 
-- Blocking should favor recall. Missing a true candidate here means the matching stage can never recover it.
+- Write directly to canonical `output/candidate_pairs.tsv`.
+- Filter candidates so tightly that matching cannot recover recall.
+- Use France-specific assumptions learned from outside the dataset.
 
-## Person 3: Baseline, Matching, And Submission
+## Person 3: Matching, Singleton Logic, And Submission
 
-Main responsibility: turn candidate pairs into valid predictions.
+Goal: turn Person 2's candidates into validated leaderboard files.
 
 Tasks:
 
-- Build a baseline matcher against the agreed `candidate_pairs.tsv` contract.
-- Start with a simple threshold/rule-based scorer.
-- Add explicit singleton handling instead of relying only on thresholds.
-- Produce `matching_results.tsv` in the required format.
-- Run the provided validation script before any submission.
-- Keep a log of every leaderboard submission and local validation score.
+- Consume only the agreed candidate list/feature contracts.
+- Build a first precision-focused baseline quickly.
+- Optimize thresholds on Person 1's fixed validation split.
+- Treat singleton prediction as a first-class decision.
+- Generate both official files under `output/`.
+- Run the validator before every upload.
+- Maintain the submission log and archive submitted files.
 
 Deliverables:
 
-- `src/modeling/baseline_matcher.py`
-- `src/submission/make_submission.py`
-- `data/submissions/matching_results.tsv`
-- `docs/notes/submission_log.md`
+- `src/matching/baseline_matcher.py`
+- `src/matching/threshold_search.py`
+- `src/submission/make_outputs.py`
+- `output/matching_results.tsv`
+- `output/candidate_pairs.tsv`
+- `docs/submission_log.md`
 
-Guiding principle:
+Do not:
 
-- Matching should favor precision. The metric is macro F0.5, so false matches hurt more than missed matches.
+- Modify Person 1's validation split.
+- Modify Person 2's candidate generation code just to test a model idea.
+- Upload without logging the exact commit and file versions.
 
-## Team Rules
+## Merge And Integration Flow
 
-### Data Rules
+Use this flow to keep the three tracks independent:
 
-- Use only the provided challenge data.
-- Do not use external databases, APIs, geocoders, maps, search engines, or lookup services.
-- Treat IDs as strings everywhere to avoid leading-zero bugs.
-- Read files with an explicit tab separator.
-- Keep raw data unchanged.
+1. Person 1 merges the data contract and scorer first.
+2. Person 2 builds candidates against Person 1's loader/schema contract.
+3. Person 3 builds a stub matcher that can run even with a tiny candidate sample.
+4. Person 2 publishes versioned candidates under `data/candidates/person2/`.
+5. Person 3 copies the selected candidate version into `output/candidate_pairs.tsv`, creates `output/matching_results.tsv`, validates, and submits.
+6. Only stable, reusable code is merged into `main`.
 
-### Git Rules
+No teammate should depend on unmerged notebook state from another branch.
 
-- Work only on your assigned branch.
-- Pull from the main branch before starting each work session.
-- Commit small, reviewable changes.
-- Do not edit another person's core files without discussing it.
-- Do not commit generated caches, temporary files, or large raw data.
-- Move reusable notebook code into `.py` files before merging.
+## First 6-Hour Execution Plan
 
-### Notebook Rules
-
-- Notebooks are for personal exploration only.
-- Do not build the main pipeline as one shared notebook.
-- Keep reusable logic in `src/`.
-- If a notebook result matters, summarize it in `docs/notes/`.
-
-### Output Rules
-
-- Never overwrite another teammate's output file.
-- Use versioned output names while experimenting, for example:
-
-```text
-data/candidates/candidate_pairs_person2_v01.tsv
-data/submissions/matching_results_person3_v01.tsv
-```
-
-- Copy the current best version to the canonical filename only after the team agrees:
-
-```text
-data/candidates/candidate_pairs.tsv
-data/submissions/matching_results.tsv
-```
-
-### Validation Rules
-
-- Use one shared validation split.
-- Use one shared scoring script or scoring notebook.
-- Do not compare model changes using different validation splits.
-- Run the challenge validation script before upload.
-- Log every leaderboard submission with:
-  - timestamp
-  - branch/commit
-  - local validation score
-  - public leaderboard score
-  - short note on what changed
-
-### Submission Rules
-
-- Only one person should upload to the leaderboard at a time.
-- Do not submit experiments that have not passed local validation.
-- Keep the best robust submission, not just the best public leaderboard spike.
-- Before the deadline, confirm the latest accepted `matching_results.tsv` is the intended final version.
-
-## First 6-Hour Plan
-
-1. Person 1 confirms schema, file sizes, and label/submission format.
-2. Person 2 creates the first normalization functions and a simple candidate-pair generator.
-3. Person 3 creates a stub pipeline that can read `candidate_pairs.tsv` and write `matching_results.tsv`.
-4. Team agrees on the exact columns and ID formatting.
-5. Person 2 produces the first real `candidate_pairs.tsv`.
-6. Person 3 produces the first valid baseline `matching_results.tsv`.
-7. Team validates the output and records the first baseline score.
+1. Person 1 creates the fixed validation split and local scorer.
+2. Person 2 creates an exact/near-exact blocking baseline using normalized names and address tokens.
+3. Person 3 creates a stub matcher that predicts empty lists for all test Source 1 rows, then a simple thresholded matcher once candidates arrive.
+4. Person 3 validates the all-singleton/stub output locally but does not submit it unless needed as an emergency baseline.
+5. Person 2 exports the first real candidate version.
+6. Person 3 generates the first real `matching_results.tsv`.
+7. Team spends Submission Slot 1 on the first validator-passing real baseline.
+8. Team reviews public score, local validation score, singleton rate, and false-positive risk before spending Slot 2.
 
 ## First Phase Success Criteria
 
-- The data schema is documented.
-- A shared validation split exists.
-- `candidate_pairs.tsv` is generated reproducibly.
-- `matching_results.tsv` is generated reproducibly.
-- Singleton predictions are handled deliberately.
-- At least one valid baseline submission is ready.
-- The methodology document has been started before deeper experimentation.
+- The official validator passes.
+- One real leaderboard submission has been made and logged.
+- The local scorer exists and is shared.
+- Candidate generation is reproducible.
+- Final matches are a subset of candidates.
+- Every person's branch has clear owned files and no cross-branch overwrite risk.
+- The team still has at least one reserved submission slot for the day.
