@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -243,6 +244,7 @@ def write_scored_outputs(
     output_dir: Path,
     threshold: float,
     max_matches: int | None,
+    score_candidate_limit: int | None,
     batch_size: int,
     rebuild_target_store: bool,
     scores_output: Path | None,
@@ -254,6 +256,9 @@ def write_scored_outputs(
         output_dir.mkdir(parents=True, exist_ok=True)
         matching_path = output_dir / "matching_results.tsv"
         candidate_path = output_dir / "candidate_pairs.tsv"
+        if candidate_input.resolve() != candidate_path.resolve():
+            print(f"Copying candidate file to {candidate_path}", flush=True)
+            shutil.copyfile(candidate_input, candidate_path)
 
         score_handle = None
         score_writer = None
@@ -272,28 +277,45 @@ def write_scored_outputs(
             "missing_source1_rows": 0,
             "missing_target_links": 0,
             "threshold": threshold,
+            "score_candidate_limit": score_candidate_limit or 0,
             "candidate_input": str(candidate_input),
         }
 
         try:
-            with matching_path.open("w", encoding="utf-8", newline="") as match_handle, candidate_path.open(
-                "w", encoding="utf-8", newline=""
-            ) as cand_handle:
+            with matching_path.open("w", encoding="utf-8", newline="") as match_handle:
                 match_writer = csv.writer(match_handle, delimiter="\t", lineterminator="\n")
-                cand_writer = csv.writer(cand_handle, delimiter="\t", lineterminator="\n")
                 match_writer.writerow(["source1_entity_id", "matched_entity_ids"])
-                cand_writer.writerow(["source1_entity_id", "candidate_entity_ids"])
 
                 batch: list[tuple[str, tuple[str, ...]]] = []
                 for item in iter_candidate_rows(candidate_input):
                     batch.append(item)
                     if len(batch) >= batch_size:
-                        process_batch(batch, source1_features, con, cand_writer, match_writer, score_writer, threshold, max_matches, stats)
+                        process_batch(
+                            batch,
+                            source1_features,
+                            con,
+                            match_writer,
+                            score_writer,
+                            threshold,
+                            max_matches,
+                            score_candidate_limit,
+                            stats,
+                        )
                         batch.clear()
-                        if stats["rows"] % 100000 == 0:
+                        if int(stats["rows"]) % 10000 == 0:
                             print(f"  {stats['rows']:,} rows, {stats['matched_links']:,} matches", flush=True)
                 if batch:
-                    process_batch(batch, source1_features, con, cand_writer, match_writer, score_writer, threshold, max_matches, stats)
+                    process_batch(
+                        batch,
+                        source1_features,
+                        con,
+                        match_writer,
+                        score_writer,
+                        threshold,
+                        max_matches,
+                        score_candidate_limit,
+                        stats,
+                    )
         finally:
             if score_handle is not None:
                 score_handle.close()
@@ -308,25 +330,29 @@ def process_batch(
     batch: list[tuple[str, tuple[str, ...]]],
     source1_features: dict[str, RecordFeatures],
     con: sqlite3.Connection,
-    cand_writer,
     match_writer,
     score_writer,
     threshold: float,
     max_matches: int | None,
+    score_candidate_limit: int | None,
     stats: dict[str, int | float | str],
 ) -> None:
-    candidate_ids = {candidate_id for _, ids in batch for candidate_id in ids}
+    candidate_ids = {
+        candidate_id
+        for _, ids in batch
+        for candidate_id in (ids[:score_candidate_limit] if score_candidate_limit is not None else ids)
+    }
     target_features = fetch_targets(con, candidate_ids)
     for source1_id, candidates in batch:
         source = source1_features.get(source1_id)
         if source is None:
             stats["missing_source1_rows"] = int(stats["missing_source1_rows"]) + 1
-            cand_writer.writerow([source1_id, format_id_list(candidates)])
             match_writer.writerow([source1_id, ""])
             continue
 
         scored: list[tuple[str, float]] = []
-        for candidate_id in candidates:
+        scored_candidates = candidates[:score_candidate_limit] if score_candidate_limit is not None else candidates
+        for candidate_id in scored_candidates:
             target = target_features.get(candidate_id)
             if target is None:
                 stats["missing_target_links"] = int(stats["missing_target_links"]) + 1
@@ -340,7 +366,6 @@ def process_batch(
         if max_matches is not None:
             selected = selected[:max_matches]
 
-        cand_writer.writerow([source1_id, format_id_list(candidates)])
         match_writer.writerow([source1_id, format_id_list(selected)])
 
         stats["rows"] = int(stats["rows"]) + 1
@@ -360,6 +385,12 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--threshold", type=float, default=0.82)
     parser.add_argument("--max-matches", type=int, default=None)
+    parser.add_argument(
+        "--score-candidate-limit",
+        type=int,
+        default=None,
+        help="Only score the first N candidate IDs per S1 row while preserving the full candidate list in output/candidate_pairs.tsv.",
+    )
     parser.add_argument("--batch-size", type=int, default=2000)
     parser.add_argument("--rebuild-target-store", action="store_true")
     parser.add_argument("--scores-output", type=Path, default=None)
@@ -371,6 +402,8 @@ def main() -> int:
         parser.error("--batch-size must be positive")
     if args.max_matches is not None and args.max_matches < 1:
         parser.error("--max-matches must be positive")
+    if args.score_candidate_limit is not None and args.score_candidate_limit < 1:
+        parser.error("--score-candidate-limit must be positive")
 
     stats = write_scored_outputs(
         candidate_input=args.candidate_input,
@@ -381,6 +414,7 @@ def main() -> int:
         output_dir=args.output_dir,
         threshold=args.threshold,
         max_matches=args.max_matches,
+        score_candidate_limit=args.score_candidate_limit,
         batch_size=args.batch_size,
         rebuild_target_store=args.rebuild_target_store,
         scores_output=args.scores_output,
