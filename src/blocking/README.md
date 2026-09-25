@@ -1,6 +1,6 @@
 # Member 2: blocking baseline
 
-This code generates candidate lists from the **provided TSV data only**. It uses a disk-backed SQLite index so that the 10-million-row target corpus does not need to fit in RAM. It preserves IDs as strings and treats `country` as an open string label, including France.
+This code generates candidate lists from the **provided TSV data only**. It uses a disk-backed SQLite index so that the 10-million-row target corpus does not need to fit in RAM. The fast generator uses DuckDB to join queries in batches against that index. It preserves IDs as strings and treats `country` as an open string label, including France.
 
 ## Run
 
@@ -8,7 +8,8 @@ From the repository root, using the official local resource package:
 
 ```powershell
 $resource = 'dataset/6ab10eb3b23ba_student_resource/student_resource/dataset'
-python src/blocking/generate_candidates.py `
+python -m pip install -r src/blocking/requirements.txt
+python src/blocking/generate_candidates_fast.py `
   --source1 "$resource/test/test_source1.tsv" `
   --source2 "$resource/test/test_source2.tsv" `
   --source3 "$resource/test/test_source3.tsv" `
@@ -16,7 +17,7 @@ python src/blocking/generate_candidates.py `
   --output 'data/candidates/person2/candidate_pairs_v01.tsv'
 ```
 
-The first run builds the index; later runs reuse it. Keep separate indexes for train and test. Use `--max-queries 5000` only for quick development, never for a file passed to Person 3 as the full candidate set.
+The first run builds the index; later runs reuse it. Keep separate indexes for train and test. DuckDB downloads its SQLite extension once as a software dependency into `data/candidates/person2/.duckdb_work/extensions/`. Use `--max-queries 5000` only for quick development, never for a file passed to Person 3 as the full candidate set.
 
 If an index build is interrupted after loading all target rows but before the lookup index is ready, rerun the same command with `--resume-index` to finish sorting without rereading the source files. This is valid only when both source files were completely loaded.
 

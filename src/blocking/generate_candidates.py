@@ -71,12 +71,7 @@ def finish_index(con, target_paths, count):
     print(f"Indexed {count:,} target rows", flush=True)
 
 
-def candidate_score(query_name, query_address, target_name, target_address, shared_blocks):
-    qn, tn = set(query_name.split()), set(target_name.split())
-    qa, ta = set(query_address.split()), set(target_address.split())
-    name_overlap = len(qn & tn) / max(1, len(qn | tn))
-    addr_overlap = len(qa & ta) / max(1, len(qa | ta))
-    return 4 * (query_name == target_name) + 2 * name_overlap + addr_overlap + min(shared_blocks, 3) * 0.1
+KEY_WEIGHTS = {"name": 5, "address": 5, "pair": 3, "postal": 2, "number": 2, "locality": 2, "addressnum": 2, "prefixaddr": 1}
 
 
 def generate(con, query_path, output_path, max_block_size, max_candidates, max_queries=None):
@@ -98,16 +93,12 @@ def generate(con, query_path, output_path, max_block_size, max_candidates, max_q
                 if len(rows) > max_block_size:
                     stats["skipped_large_blocks"] += 1
                     continue
+                weight = KEY_WEIGHTS[key.split("|", 2)[1]]
                 for (target_id,) in rows:
-                    hits[target_id] = hits.get(target_id, 0) + 1
+                    hits[target_id] = hits.get(target_id, 0) + weight
             if len(hits) > max_candidates:
                 stats["capped_queries"] += 1
-                qname, qaddr = normalize(query["business_name"]), normalize(query["business_address"])
-                scored = []
-                for target_id, shared in hits.items():
-                    tname, taddr = con.execute("SELECT name, address FROM targets WHERE entity_id=?", (target_id,)).fetchone()
-                    scored.append((candidate_score(qname, qaddr, tname, taddr, shared), target_id))
-                selected = [item[1] for item in heapq.nlargest(max_candidates, scored)]
+                selected = [item[0] for item in heapq.nlargest(max_candidates, hits.items(), key=lambda item: (item[1], item[0]))]
             else:
                 selected = list(hits)
             selected.sort()
