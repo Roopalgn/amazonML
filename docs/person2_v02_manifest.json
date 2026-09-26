@@ -63,6 +63,10 @@
     "india_cap500_candidate_oracle_macro_f0_5": 0.967828,
     "us_cap500_pair_recall": 0.974305,
     "us_cap500_candidate_oracle_macro_f0_5": 0.991749,
+    "cap500_true_link_recall_by_target_source": {
+      "S2": 0.945594,
+      "S3": 0.957415
+    },
     "full_test_v02_artifact_generated": false
   },
   "pair_scoring_diagnostic_using_v01_candidates": {
@@ -84,6 +88,37 @@
       "macro_f0_5": 0.76294526629476
     },
     "caveat": "Offline fixed-split holdout; not an official leaderboard score and evaluated using v01 candidates."
+  },
+  "pair_scoring_diagnostic_using_v02_candidates": {
+    "candidate_limit": 50,
+    "feature_score_file": "data/features/person2_v02_top50_scores.tsv",
+    "training_pairs_seen": {
+      "negative": 15662234,
+      "positive": 1096841
+    },
+    "training_pairs_sampled": {
+      "positive": 300000,
+      "negative": 300000
+    },
+    "train_tune_report_split": "Source-1 numeric ID % 5 != 0 for training; % 10 == 0 for threshold tuning; % 10 == 5 for untouched final report",
+    "training_seconds": 131.66,
+    "tuning_queries": 44273,
+    "tuning_best": {
+      "threshold": 0.95,
+      "maximum_matches": 10,
+      "macro_f0_5": 0.86619990295964
+    },
+    "final_queries": 43977,
+    "lightgbm": {
+      "threshold": 0.95,
+      "maximum_matches": 10,
+      "macro_f0_5": 0.8662820585992109,
+      "singleton_macro_f0_5": 0.7836924376848331,
+      "non_singleton_macro_f0_5": 0.8709801992554063
+    },
+    "comparison_v01_candidates_lightgbm_macro_f0_5": 0.8576451706883839,
+    "difference_from_v01_candidates": 0.008636887910827,
+    "caveat": "Offline fixed-split holdout; not an official leaderboard score and not a production Person 3 submission."
   },
   "report": "docs/person2_v02_report.md"
 }

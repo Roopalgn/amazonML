@@ -38,7 +38,7 @@ The full cap-1,000 ranked-list evaluation also measured these list-prefix result
 
 Country oracle macro F0.5 at prefixes 20 / 50 / 100 / 200 / full 1,000 was **India: 0.907239 / 0.923008 / 0.951691 / 0.959874 / 0.972952**, and **US: 0.973929 / 0.979480 / 0.982811 / 0.987670 / 0.994058**. Pair recall at prefix 50 / full 1,000 was **India: 0.833727 / 0.930021**, and **US: 0.940319 / 0.981039**. Across all 441,287 validation queries, 414,800 had at least one retrieved true target.
 
-Cap 500 contains 51,381,645 S2 and 109,833,024 S3 links (31.87% / 68.13%); cap 1,000 contains 105,448,254 S2 and 145,834,652 S3 links (41.96% / 58.04%). The cap-500 file is about 2.08 GB uncompressed versus 3.24 GB at cap 1,000. Its companion ZIP is about 934 MB.
+Cap 500 contains 51,381,645 S2 and 109,833,024 S3 links (31.87% / 68.13%); cap 1,000 contains 105,448,254 S2 and 145,834,652 S3 links (41.96% / 58.04%). At cap 500, true-link recall is 0.945594 for S2 truths and 0.957415 for S3 truths, so S3's larger candidate volume did not crowd out S2 truth retrieval. The cap-500 file is about 2.08 GB uncompressed versus 3.24 GB at cap 1,000. Its companion ZIP is about 934 MB.
 
 The structural verification found one row for every fixed ID, no missing or duplicate query IDs, no duplicate candidates per row, only S2/S3 target prefixes, and candidate order preserved from the ranked cap-1,000 source. The fixed train validation subset has no France source rows; France handling remains open-set in the code, and the separate v01 test artifact retains all 259,452 France test rows.
 
@@ -52,9 +52,9 @@ The structural verification found one row for every fixed ID, no missing or dupl
 
 ## Pair-scoring diagnostic
 
-I also tested a LightGBM pair scorer with the existing matching features, using only fixed-split train labels and v01 candidates. Candidate scores were generated for the top 50 candidate links per query. The split is deterministic by Source-1 numeric ID: train on IDs `% 5 != 0`, tune on `% 10 == 0`, and report once on the untouched `% 10 == 5` slice. The LightGBM training sample used 300,000 positives and 300,000 negatives.
+I trained the same scratch LightGBM pair scorer on v02's top 50 candidates per query, using the existing matching features and only labels from the supplied fixed-split training data. The split is deterministic by Source-1 numeric ID: train on IDs `% 5 != 0`, tune on `% 10 == 0`, and report once on the untouched `% 10 == 5` slice. Training sampled 300,000 positive and 300,000 negative pairs from 1,096,841 positive and 15,662,234 negative eligible pairs.
 
-On the untouched 43,977-query slice, LightGBM reached macro F0.5 **0.857645** at the tuning-selected threshold 0.95 and max 10 predictions per query. The matched-budget logistic comparator reached **0.762945** at threshold 0.80 and max 5. This is an offline holdout result using v01 candidates, not a public score or a direct comparison to the teammate's reported 0.895; the evaluation and submission procedures may differ. The v02 candidate set is being scored separately before recommending model integration.
+On the untouched 43,977-query slice, v02 LightGBM reached macro F0.5 **0.866282** at the tuning-selected threshold 0.95 and max 10 predictions per query. Under the same experimental procedure, the v01-candidate LightGBM result was **0.857645** at threshold 0.95 and max 10; v02 is higher by **0.008637**. For context, the v01 logistic comparator was **0.762945** at threshold 0.80 and max 5. The tuning slice score was 0.866200. These are offline fixed-split diagnostics, not public leaderboard scores and not directly comparable to the teammate's reported 0.895 if its evaluation procedure differs. This diagnostic does not modify or replace Person 3's production matching/submission logic.
 
 ## Validation and limits
 
