@@ -68,7 +68,12 @@ PAIR_FEATURE_COLUMNS = (
     "address_exact",
     "target_address_missing",
     "target_is_source2",
+    # Query/candidate context. These are normalized so a model can learn
+    # from retrieval rank without making the raw candidate count dominant.
+    "candidate_rank_score",
+    "candidate_count_log",
 )
+BASE_PAIR_FEATURE_COLUMNS = PAIR_FEATURE_COLUMNS[:-2]
 
 
 def source_signature(paths: Iterable[Path]) -> str:
@@ -140,7 +145,13 @@ def dice(left: frozenset[str], right: frozenset[str]) -> float:
     return 2.0 * len(left & right) / (len(left) + len(right))
 
 
-def pair_features(source1: RecordFeatures, target: RecordFeatures) -> tuple[float, ...]:
+def pair_features(
+    source1: RecordFeatures,
+    target: RecordFeatures,
+    *,
+    candidate_rank: int = 1,
+    candidate_count: int = 1,
+) -> tuple[float, ...]:
     """Return pairwise similarities and simple source metadata for a matcher."""
     name_j = jaccard(source1.name_tokens, target.name_tokens)
     name_o = overlap(source1.name_tokens, target.name_tokens)
@@ -150,6 +161,10 @@ def pair_features(source1: RecordFeatures, target: RecordFeatures) -> tuple[floa
     address_d = dice(source1.address_grams, target.address_grams)
     number_o = overlap(source1.address_numbers, target.address_numbers)
     country_match = 1.0 if source1.country and source1.country == target.country else 0.0
+    if candidate_rank < 1 or candidate_count < 1:
+        raise ValueError("candidate rank and count must be positive")
+    candidate_rank_score = 1.0 / math.log2(candidate_rank + 1.0)
+    candidate_count_log = min(1.0, math.log1p(candidate_count) / math.log1p(1000.0))
     return (
         name_j,
         name_o,
@@ -163,6 +178,8 @@ def pair_features(source1: RecordFeatures, target: RecordFeatures) -> tuple[floa
         float(bool(source1.address and source1.address == target.address)),
         float(not bool(target.address)),
         float(target.entity_id.startswith("S2-")),
+        candidate_rank_score,
+        candidate_count_log,
     )
 
 
@@ -173,6 +190,7 @@ def score_pair(
 ) -> float:
     """Return a precision-oriented heuristic score in [0, 1]."""
 
+    base_features = features[: len(BASE_PAIR_FEATURE_COLUMNS)] if features is not None else pair_features(source1, target)[: len(BASE_PAIR_FEATURE_COLUMNS)]
     (
         name_j,
         name_o,
@@ -186,7 +204,7 @@ def score_pair(
         address_exact,
         _target_address_missing,
         _target_is_source2,
-    ) = features if features is not None else pair_features(source1, target)
+    ) = base_features
 
     score = (
         0.24 * name_j
@@ -212,7 +230,13 @@ def score_pair(
 
 def model_probability(features: tuple[float, ...], model: dict[str, object]) -> float:
     weights = model["weights"]
-    logit = float(model["bias"]) + sum(float(value) * float(weight) for value, weight in zip(features, weights))
+    model_columns = tuple(model.get("feature_columns") or PAIR_FEATURE_COLUMNS)
+    index = {name: position for position, name in enumerate(PAIR_FEATURE_COLUMNS)}
+    try:
+        model_features = (features[index[name]] for name in model_columns)
+    except KeyError as exc:
+        raise ValueError(f"Model requests unknown feature column: {exc.args[0]}") from exc
+    logit = float(model["bias"]) + sum(float(value) * float(weight) for value, weight in zip(model_features, weights))
     if logit >= 0.0:
         exp_value = math.exp(-min(logit, 60.0))
         return 1.0 / (1.0 + exp_value)
@@ -331,7 +355,7 @@ def fetch_targets(con: sqlite3.Connection, candidate_ids: set[str]) -> dict[str,
     return result
 
 
-def iter_candidate_rows(path: Path):
+def iter_candidate_rows(path: Path, source1_ids: set[str] | None = None):
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         required = {"source1_entity_id", "candidate_entity_ids"}
@@ -339,7 +363,10 @@ def iter_candidate_rows(path: Path):
         if missing:
             raise ValueError(f"{path} missing required column(s): {sorted(missing)}")
         for row in reader:
-            yield row["source1_entity_id"], keep_valid_match_ids(parse_id_list(row.get("candidate_entity_ids")))
+            source1_id = row["source1_entity_id"]
+            if source1_ids is not None and source1_id not in source1_ids:
+                continue
+            yield source1_id, keep_valid_match_ids(parse_id_list(row.get("candidate_entity_ids")))
 
 
 def write_scored_outputs(
@@ -397,7 +424,7 @@ def write_scored_outputs(
 
         try:
             source1_rows = iter_source1_features(source1, source1_ids)
-            candidate_rows = iter_candidate_rows(candidate_input)
+            candidate_rows = iter_candidate_rows(candidate_input, source1_ids)
             with matching_partial_path.open("w", encoding="utf-8", newline="") as match_handle:
                 match_writer = csv.writer(match_handle, delimiter="\t", lineterminator="\n")
                 match_writer.writerow(["source1_entity_id", "matched_entity_ids"])
@@ -500,12 +527,20 @@ def process_batch(
 
         scored: list[tuple[str, float]] = []
         scored_candidates = candidates[:score_candidate_limit] if score_candidate_limit is not None else candidates
-        for candidate_id in scored_candidates:
+        for rank, candidate_id in enumerate(scored_candidates, start=1):
             target = target_features.get(candidate_id)
             if target is None:
                 stats["missing_target_links"] = int(stats["missing_target_links"]) + 1
                 continue
-            features = pair_features(source, target) if score_writer is not None or pair_model is not None else None
+            features = (
+                pair_features(
+                    source,
+                    target,
+                    candidate_rank=rank,
+                    candidate_count=len(scored_candidates),
+                )
+                if score_writer is not None or pair_model is not None else None
+            )
             score = model_probability(features, pair_model) if pair_model is not None else score_pair(source, target, features)
             scored.append((candidate_id, score))
             if score_writer is not None:
@@ -560,8 +595,11 @@ def main() -> int:
     args = parser.parse_args()
 
     pair_model = json.loads(args.model_json.read_text(encoding="utf-8")) if args.model_json else None
-    if pair_model is not None and pair_model.get("feature_columns") != list(PAIR_FEATURE_COLUMNS):
-        parser.error("--model-json feature columns do not match this scorer")
+    if pair_model is not None:
+        model_columns = tuple(pair_model.get("feature_columns") or ())
+        supported_columns = {tuple(BASE_PAIR_FEATURE_COLUMNS), tuple(PAIR_FEATURE_COLUMNS)}
+        if model_columns not in supported_columns:
+            parser.error("--model-json feature columns are not supported by this scorer")
     threshold = args.threshold if args.threshold is not None else float(pair_model.get("threshold", 0.82) if pair_model else 0.82)
     max_matches = args.max_matches if args.max_matches is not None else (pair_model.get("max_matches") if pair_model else None)
     if not 0.0 <= threshold <= 1.0:
