@@ -60,6 +60,9 @@ def main() -> int:
     score_sums: dict[tuple[str, int | None], float] = defaultdict(float)
     score_counts: Counter[tuple[str, int | None]] = Counter()
     capped_oracle_sums: dict[tuple[str, int | None, int | None], float] = defaultdict(float)
+    cardinality_sums: dict[tuple[str, int | None], float] = defaultdict(float)
+    cardinality_capped_sums: dict[tuple[str, int | None, int | None], float] = defaultdict(float)
+    cardinality_counts: Counter[str] = Counter()
     rows_seen: set[str] = set()
     candidate_link_count = 0
     rows_with_candidates = 0
@@ -90,6 +93,12 @@ def main() -> int:
             if len(ordered) != len(candidate_ids):
                 raise ValueError(f"Duplicate candidate IDs for {source1_id}")
             truth_ids = truth[source1_id]
+            cardinality = (
+                "singleton" if not truth_ids else
+                "1-2" if len(truth_ids) <= 2 else
+                "3-5" if len(truth_ids) <= 5 else "6+"
+            )
+            cardinality_counts[cardinality] += 1
             country = countries[source1_id] or "(blank)"
             source_counts[country] += 1
             group = country_rows[country]
@@ -121,6 +130,10 @@ def main() -> int:
                 for match_cap in match_caps:
                     capped_prediction = prediction if match_cap is None else set(list(prediction)[:match_cap])
                     capped_oracle_sums[(country, cutoff, match_cap)] += entity_f05(truth_ids, capped_prediction)
+                cardinality_sums[(cardinality, cutoff)] += entity_f05(truth_ids, prediction)
+                for match_cap in match_caps:
+                    capped_prediction = prediction if match_cap is None else set(list(prediction)[:match_cap])
+                    cardinality_capped_sums[(cardinality, cutoff, match_cap)] += entity_f05(truth_ids, capped_prediction)
 
     missing_rows = validation_ids - rows_seen
     if missing_rows:
@@ -159,6 +172,23 @@ def main() -> int:
             },
         }
 
+    cardinality_breakdown = {}
+    for cardinality, count in sorted(cardinality_counts.items()):
+        cardinality_breakdown[cardinality] = {
+            "queries": count,
+            "oracle_macro_f0_5_by_prefix": {
+                "all" if cutoff is None else str(cutoff): cardinality_sums[(cardinality, cutoff)] / max(1, count)
+                for cutoff in cutoffs
+            },
+            "oracle_macro_f0_5_by_prefix_and_match_cap": {
+                "all" if cutoff is None else str(cutoff): {
+                    "all" if match_cap is None else str(match_cap): cardinality_capped_sums[(cardinality, cutoff, match_cap)] / max(1, count)
+                    for match_cap in match_caps
+                }
+                for cutoff in cutoffs
+            },
+        }
+
     report = {
         "validation_queries": len(validation_ids),
         "candidate_rows": len(rows_seen),
@@ -174,6 +204,7 @@ def main() -> int:
         "candidate_oracle_macro_f0_5_by_prefix_and_match_cap": capped_oracle_overall,
         "true_link_rank_histogram": dict(true_link_rank_histogram),
         "source1_country_breakdown": by_country,
+        "truth_cardinality_breakdown": cardinality_breakdown,
     }
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

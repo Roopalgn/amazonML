@@ -1,0 +1,29 @@
+{
+  "block_settings": "max_block_size=1000,max_candidates=200",
+  "candidate_artifact": {
+    "bytes": 801194764,
+    "path": "data\\candidates\\person2\\validation\\candidate_pairs_train_validation_v01\\candidate_pairs_train_validation_v01.tsv",
+    "sha256": "2426b6361dac35ccad5332044f9a4378f4b3c7a3716f75648981bc0cdcbcc1c5"
+  },
+  "candidate_cap": 20,
+  "candidate_version": "v01-validation",
+  "git_branch": "person-1",
+  "git_commit": "b71605741bf164e200f2f51a301168503600449a",
+  "local_macro_f0_5": 0.7650120454,
+  "matching_version": "logistic_v1",
+  "model_artifact": {
+    "bytes": 7265,
+    "path": "output\\pair_model_v1.json",
+    "sha256": "af1a6d4fdc741a963f29cbd48920c1cfc3fc15644544b1ae10eb7299c516350e"
+  },
+  "notes": "Current public baseline; candidate oracle ceiling requires improved blocking.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "public_score": 0.720829,
+  "python": "3.12.14 (main, Aug 25 2026, 14:01:42) [MSC v.1944 64 bit (AMD64)]",
+  "threshold_policy": "probability>=0.72,max_matches=5",
+  "validation_ids": {
+    "bytes": 6129258,
+    "path": "data\\processed\\validation_source1_ids.txt",
+    "sha256": "dbf52e20d318f152afca76ce77202c75208d46bdb7ffe07d207e72c6adf51cbc"
+  }
+}
