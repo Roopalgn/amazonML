@@ -1,0 +1,65 @@
+{
+  "candidate_version": "person2_v02",
+  "recommended_artifact": "candidate_pairs_train_validation_v02.tsv",
+  "git_branch": "sidhesh_member2_v02",
+  "git_commit": "43332799799f87efa934c9d6a36cb75132ffa05e",
+  "data_policy": "Supplied challenge train_source1.tsv, train_source2.tsv, train_source3.tsv, train_ground_truth.tsv, and fixed validation_source1_ids.txt only; no external entity data or APIs.",
+  "validation": {
+    "validation_id_file": "data/processed/validation_source1_ids.txt",
+    "validation_id_count": 441287,
+    "validation_id_sha256": "dbf52e20d318f152afca76ce77202c75208d46bdb7ffe07d207e72c6adf51cbc",
+    "candidate_query_rows": 441287,
+    "all_fixed_ids_present": true,
+    "source1": "dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source1.tsv",
+    "targets": [
+      "dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source2.tsv",
+      "dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source3.tsv"
+    ]
+  },
+  "generation": {
+    "settings": {
+      "batch_size": 10000,
+      "max_block_size": 1000,
+      "generation_max_candidates": 1000,
+      "recommended_max_candidates": 500,
+      "tie_break": "descending accumulated key weight, then descending target entity ID",
+      "truncation": "stable ordered prefix; no re-ranking"
+    },
+    "commands": [
+      "python src/blocking/select_validation_source1.py --output data/candidates/person2/validation/validation_source1.tsv",
+      "python src/blocking/generate_candidates_fast.py --source1 data/candidates/person2/validation/validation_source1.tsv --source2 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source2.tsv --source3 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source3.tsv --index data/candidates/person2/train_index_v02.sqlite --output data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv --batch-size 10000 --max-block-size 1000 --max-candidates 1000",
+      "python src/blocking/truncate_candidates.py --input data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv --max-candidates 500 --output data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv"
+    ],
+    "generation_elapsed_seconds": 2694.61,
+    "raw_generator_candidate_links_at_1000": 251282906,
+    "large_block_skips": 1640452
+  },
+  "recommended_validation_artifact": {
+    "path": "data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv",
+    "bytes": 2083563022,
+    "candidate_links": 161214669,
+    "maximum_candidates_per_row": 500,
+    "rows_with_candidates": 441274,
+    "only_s2_s3_candidate_ids": true,
+    "no_duplicate_candidates_per_row": true,
+    "source1_order_matches_fixed_split": true,
+    "sha256": "4d0d7db0b5e459c7fd59cd55150ecf7734af37719ed68723cd42cb8a8d7f8d9f",
+    "zip_path": "data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.zip",
+    "zip_bytes": 933849957,
+    "zip_sha256": "15c0281fe8d41b525259751fe9221dfc480937a8e78fc6e480c7645190a3136a"
+  },
+  "metrics": {
+    "v01_top50_candidate_oracle_macro_f0_5": 0.9422692149481108,
+    "v02_top50_candidate_oracle_macro_f0_5": 0.9569071662874394,
+    "v02_cap500_candidate_pair_recall": 0.951704,
+    "v02_cap500_candidate_oracle_macro_f0_5": 0.982187,
+    "v02_cap1000_candidate_pair_recall": 0.9606164988864843,
+    "v02_cap1000_candidate_oracle_macro_f0_5": 0.9856213265185995,
+    "india_cap500_pair_recall": 0.917845,
+    "india_cap500_candidate_oracle_macro_f0_5": 0.967828,
+    "us_cap500_pair_recall": 0.974305,
+    "us_cap500_candidate_oracle_macro_f0_5": 0.991749,
+    "full_test_v02_artifact_generated": false
+  },
+  "report": "docs/person2_v02_report.md"
+}
