@@ -120,5 +120,41 @@
     "difference_from_v01_candidates": 0.008636887910827,
     "caveat": "Offline fixed-split holdout; not an official leaderboard score and not a production Person 3 submission."
   },
+  "pair_scoring_capacity_sweep": {
+    "selection": "model selected by fixed tuning IDs (numeric ID % 10 == 0); final fixed-split score reported after selection",
+    "candidate_limit": 50,
+    "selected_model_parameters": {
+      "sample_per_class": 800000,
+      "n_estimators": 700,
+      "num_leaves": 63,
+      "learning_rate": 0.035,
+      "min_child_samples": 80,
+      "threads": "all available"
+    },
+    "tune_best": {
+      "threshold": 0.95,
+      "maximum_matches": 10,
+      "macro_f0_5": 0.8682502750432498,
+      "queries": 44273
+    },
+    "fixed_holdout": {
+      "threshold": 0.95,
+      "maximum_matches": 10,
+      "macro_f0_5": 0.8682410838201348,
+      "queries": 43977,
+      "singleton_macro_f0_5": 0.7891846218842417,
+      "non_singleton_macro_f0_5": 0.8727382394414357
+    },
+    "comparison": {
+      "v02_default_300k_sample_holdout_macro_f0_5": 0.8662820585992109,
+      "v01_candidate_lightgbm_holdout_macro_f0_5": 0.8576451706883839,
+      "v01_logistic_holdout_macro_f0_5": 0.76294526629476
+    },
+    "negative_experiments": {
+      "adding_existing_heuristic_score_tuning_macro_f0_5": 0.8650179533624339,
+      "1000000_pairs_per_class_tuning_macro_f0_5": 0.8674653355084389
+    },
+    "caveat": "Offline fixed-split diagnostic, not an official leaderboard score. Model was not integrated into Person 3's production submission path."
+  },
   "report": "docs/person2_v02_report.md"
 }
