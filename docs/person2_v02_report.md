@@ -50,6 +50,12 @@ The structural verification found one row for every fixed ID, no missing or dupl
 - The generated validation TSV/ZIP and indexes are local ignored artifacts; they are not part of the Git branch.
 - Full test-set v02 candidates were not generated during this validation run. The existing full test v01 candidate file remains available; use v02 code and a separate full test index to create a test artifact before replacing it.
 
+## Pair-scoring diagnostic
+
+I also tested a LightGBM pair scorer with the existing matching features, using only fixed-split train labels and v01 candidates. Candidate scores were generated for the top 50 candidate links per query. The split is deterministic by Source-1 numeric ID: train on IDs `% 5 != 0`, tune on `% 10 == 0`, and report once on the untouched `% 10 == 5` slice. The LightGBM training sample used 300,000 positives and 300,000 negatives.
+
+On the untouched 43,977-query slice, LightGBM reached macro F0.5 **0.857645** at the tuning-selected threshold 0.95 and max 10 predictions per query. The matched-budget logistic comparator reached **0.762945** at threshold 0.80 and max 5. This is an offline holdout result using v01 candidates, not a public score or a direct comparison to the teammate's reported 0.895; the evaluation and submission procedures may differ. The v02 candidate set is being scored separately before recommending model integration.
+
 ## Validation and limits
 
-`src/blocking/smoke_test.py` passes, and all `src/blocking/` modules compile. Full validation candidate structure and checksums pass. Candidate-oracle F0.5 assumes an oracle that knows which retrieved targets are true; it is a ceiling, not a model score. The top-50 oracle ceiling of 0.956907 means this candidate list alone cannot support a 0.998 top-50 validation score. A separate learned scorer was evaluated on fixed validation below once its report is complete; no public leaderboard result is inferred from this offline split.
+`src/blocking/smoke_test.py` passes, and all `src/blocking/` modules compile. Full validation candidate structure and checksums pass. Candidate-oracle F0.5 assumes an oracle that knows which retrieved targets are true; it is a ceiling, not a model score. The top-50 oracle ceiling of 0.956907 means this candidate list alone cannot support a 0.998 top-50 validation score. No public leaderboard result is inferred from the offline split.

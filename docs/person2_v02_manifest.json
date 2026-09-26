@@ -27,8 +27,9 @@
     },
     "commands": [
       "python src/blocking/select_validation_source1.py --output data/candidates/person2/validation/validation_source1.tsv",
-      "python src/blocking/generate_candidates_fast.py --source1 data/candidates/person2/validation/validation_source1.tsv --source2 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source2.tsv --source3 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source3.tsv --index data/candidates/person2/train_index_v02.sqlite --output data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv --batch-size 10000 --max-block-size 1000 --max-candidates 1000",
-      "python src/blocking/truncate_candidates.py --input data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv --max-candidates 500 --output data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv"
+      "python src/blocking/generate_candidates_fast.py --source1 data/candidates/person2/validation/validation_source1.tsv --source2 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source2.tsv --source3 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source3.tsv --index data/candidates/person2/train_index_v02.sqlite --output data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv --batch-size 10000 --max-block-size 1000 --max-candidates 1000",
+      "python src/blocking/truncate_candidates.py --input data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv --max-candidates 500 --output data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap500.tsv",
+      "Move the raw 1000-cap TSV to candidate_pairs_train_validation_v02_cap1000.tsv, then move candidate_pairs_train_validation_v02_cap500.tsv to candidate_pairs_train_validation_v02.tsv."
     ],
     "generation_elapsed_seconds": 2694.61,
     "raw_generator_candidate_links_at_1000": 251282906,
@@ -60,6 +61,26 @@
     "us_cap500_pair_recall": 0.974305,
     "us_cap500_candidate_oracle_macro_f0_5": 0.991749,
     "full_test_v02_artifact_generated": false
+  },
+  "pair_scoring_diagnostic_using_v01_candidates": {
+    "candidate_limit": 50,
+    "training_pairs_sampled": {
+      "positive": 300000,
+      "negative": 300000
+    },
+    "train_tune_report_split": "Source-1 numeric ID % 5 != 0 for training; % 10 == 0 for threshold tuning; % 10 == 5 for untouched final report",
+    "final_queries": 43977,
+    "lightgbm": {
+      "threshold": 0.95,
+      "maximum_matches": 10,
+      "macro_f0_5": 0.8576451706883839
+    },
+    "logistic_baseline": {
+      "threshold": 0.8,
+      "maximum_matches": 5,
+      "macro_f0_5": 0.76294526629476
+    },
+    "caveat": "Offline fixed-split holdout; not an official leaderboard score and evaluated using v01 candidates."
   },
   "report": "docs/person2_v02_report.md"
 }

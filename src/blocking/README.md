@@ -45,13 +45,15 @@ python src/blocking/generate_candidates_fast.py `
   --source2 "$resource/train/train_source2.tsv" `
   --source3 "$resource/train/train_source3.tsv" `
   --index 'data/candidates/person2/train_index_v02.sqlite' `
-  --output 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv' `
+  --output 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv' `
   --batch-size 10000 --max-block-size 1000 --max-candidates 1000
 python src/blocking/truncate_candidates.py `
-  --input 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv' `
+  --input 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv' `
   --max-candidates 500 `
-  --output 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv'
+  --output 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap500.tsv'
 ```
+
+For the published names after those two commands, move the raw 1,000-cap TSV aside as `candidate_pairs_train_validation_v02_cap1000.tsv`, then move the cap-500 output to `candidate_pairs_train_validation_v02.tsv`.
 
 The fixed validation ID list SHA-256 is `DBF52E20D318F152AFCA76CE77202C75208D46BDB7FFE07D207E72C6ADF51CBC`. The recommended v02 validation artifact has 441,287 rows, 161,214,669 candidate links, a maximum of 500 links per query, and SHA-256 `4d0d7db0b5e459c7fd59cd55150ecf7734af37719ed68723cd42cb8a8d7f8d9f`. Its ZIP SHA-256 is `15c0281fe8d41b525259751fe9221dfc480937a8e78fc6e480c7645190a3136a`. Full recall/oracle comparisons and known limitations are in `docs/person2_v02_report.md`.
 
