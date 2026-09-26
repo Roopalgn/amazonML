@@ -48,7 +48,7 @@ The structural verification found one row for every fixed ID, no missing or dupl
 - Recommended validation ZIP SHA-256: `15c0281fe8d41b525259751fe9221dfc480937a8e78fc6e480c7645190a3136a`.
 - Exact generator and truncation commands, source files, settings, ID checksum, and artifact hashes are recorded in `person2_v02_manifest.json`.
 - The generated validation TSV/ZIP and indexes are local ignored artifacts; they are not part of the Git branch.
-- Full test-set v02 candidates were not generated during this validation run. The existing full test v01 candidate file remains available; use v02 code and a separate full test index to create a test artifact before replacing it.
+- Full test-set v02 candidates were generated from all 1,732,544 test Source-1 rows against the supplied test Source-2 and Source-3 files, with block size 1,000 and cap 500. The TSV contains 676,118,047 links (maximum 500 per row), is 8,736,703,750 bytes, and has SHA-256 `f458dd29f64ac60b16a9d246f3bfe4b53af4fc5f0c2202f3a8689dd7b877c785`. The ZIP is 3,915,484,084 bytes with SHA-256 `1f44cea1fd91ff6a51d4a67bee8359bc9a09e43e830c56df42f33ad13fa62a1e`. Structural checks passed: exact Source-1 order/row count, no duplicate candidates, only S2/S3 IDs, and all 259,452 France rows retained (259,451 with at least one candidate). Full-test recall/oracle metrics cannot be measured because the hidden test labels are unavailable; use the fixed-validation metrics above.
 
 ## Pair-scoring diagnostic
 

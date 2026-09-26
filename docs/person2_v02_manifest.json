@@ -67,7 +67,31 @@
       "S2": 0.945594,
       "S3": 0.957415
     },
-    "full_test_v02_artifact_generated": false
+    "full_test_v02_artifact_generated": true
+  },
+  "full_test_artifact": {
+    "source1": "dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source1.tsv",
+    "targets": [
+      "dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source2.tsv",
+      "dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source3.tsv"
+    ],
+    "path": "data/candidates/person2/candidate_pairs_v02.tsv",
+    "rows": 1732544,
+    "candidate_links": 676118047,
+    "maximum_candidates_per_row": 500,
+    "bytes": 8736703750,
+    "sha256": "f458dd29f64ac60b16a9d246f3bfe4b53af4fc5f0c2202f3a8689dd7b877c785",
+    "zip_path": "data/candidates/person2/candidate_pairs_v02.zip",
+    "zip_bytes": 3915484084,
+    "zip_sha256": "1f44cea1fd91ff6a51d4a67bee8359bc9a09e43e830c56df42f33ad13fa62a1e",
+    "structural_checks": {
+      "source1_order_and_row_count_match": true,
+      "only_s2_s3_candidate_ids": true,
+      "no_duplicate_candidates_per_row": true,
+      "france_source1_rows": 259452,
+      "france_rows_with_candidates": 259451
+    },
+    "generation_command": "py -3.12 src/blocking/generate_candidates_fast.py --source1 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source1.tsv --source2 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source2.tsv --source3 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source3.tsv --index data/candidates/person2/test_index_v02.sqlite --output data/candidates/person2/candidate_pairs_v02.tsv --batch-size 10000 --max-block-size 1000 --max-candidates 500"
   },
   "pair_scoring_diagnostic_using_v01_candidates": {
     "candidate_limit": 50,
