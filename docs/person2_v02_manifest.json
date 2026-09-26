@@ -132,18 +132,18 @@
       "threads": "all available"
     },
     "tune_best": {
-      "threshold": 0.95,
+      "threshold": 0.957,
       "maximum_matches": 10,
-      "macro_f0_5": 0.8682502750432498,
+      "macro_f0_5": 0.8691560043542725,
       "queries": 44273
     },
     "fixed_holdout": {
-      "threshold": 0.95,
+      "threshold": 0.957,
       "maximum_matches": 10,
-      "macro_f0_5": 0.8682410838201348,
+      "macro_f0_5": 0.8684361384166128,
       "queries": 43977,
-      "singleton_macro_f0_5": 0.7891846218842417,
-      "non_singleton_macro_f0_5": 0.8727382394414357
+      "singleton_macro_f0_5": 0.8162230671736375,
+      "non_singleton_macro_f0_5": 0.8714062979847984
     },
     "comparison": {
       "v02_default_300k_sample_holdout_macro_f0_5": 0.8662820585992109,
