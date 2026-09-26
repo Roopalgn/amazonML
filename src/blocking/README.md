@@ -31,6 +31,30 @@ The output is tab-separated with exactly `source1_entity_id` and `candidate_enti
 
 `--max-block-size` skips extremely broad block keys and `--max-candidates` caps candidate lists. Defaults are 1000 and 200. The sidecar `.stats.json` records skip and cap counts. Those defaults need validation on the **full index** because small-sample blocks understate their real sizes.
 
+## Version 02 fixed-validation experiment
+
+Version 02 adds country-scoped address-only postal/locality/long-token blocks and bounded leading-zero variants for short numeric house tokens. It retains name-only keys when addresses are absent. Both generators now rank candidates by summed key weight, then descending target ID; serialization preserves that same order, so a stable prefix is a valid top-K truncation. The fast SQL rank order uses the same tie-break.
+
+To reproduce the fixed-split experiment from the repository root (using the project Python environment):
+
+```powershell
+$resource = 'dataset/6ab10eb3b23ba_student_resource/student_resource/dataset'
+python src/blocking/select_validation_source1.py --output 'data/candidates/person2/validation/validation_source1.tsv'
+python src/blocking/generate_candidates_fast.py `
+  --source1 'data/candidates/person2/validation/validation_source1.tsv' `
+  --source2 "$resource/train/train_source2.tsv" `
+  --source3 "$resource/train/train_source3.tsv" `
+  --index 'data/candidates/person2/train_index_v02.sqlite' `
+  --output 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv' `
+  --batch-size 10000 --max-block-size 1000 --max-candidates 1000
+python src/blocking/truncate_candidates.py `
+  --input 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02_cap1000.tsv' `
+  --max-candidates 500 `
+  --output 'data/candidates/person2/validation/candidate_pairs_train_validation_v02/candidate_pairs_train_validation_v02.tsv'
+```
+
+The fixed validation ID list SHA-256 is `DBF52E20D318F152AFCA76CE77202C75208D46BDB7FFE07D207E72C6ADF51CBC`. The recommended v02 validation artifact has 441,287 rows, 161,214,669 candidate links, a maximum of 500 links per query, and SHA-256 `4d0d7db0b5e459c7fd59cd55150ecf7734af37719ed68723cd42cb8a8d7f8d9f`. Its ZIP SHA-256 is `15c0281fe8d41b525259751fe9221dfc480937a8e78fc6e480c7645190a3136a`. Full recall/oracle comparisons and known limitations are in `docs/person2_v02_report.md`.
+
 ## Current evidence and limitations
 
 On a development sample of 5,000 labeled Source 1 rows and 58,477 Source 2/3 rows (all known positives for those queries plus a small background sample), known-positive pair recall improved from **80.7% to 94.8%** after adding address blocks and preserving non-Latin text. At least one true match was found for **99.4%** of non-singleton rows. This sample enriches the index with positives and has fewer competing records than the full corpus, so these figures **are not full-dataset recall estimates**. Full-index candidate recall and candidate volume remain the next gate.

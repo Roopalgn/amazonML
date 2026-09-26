@@ -7,6 +7,7 @@ queried; the extension is a software dependency, not an entity lookup service.
 import argparse
 import csv
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -61,7 +62,7 @@ def process_batch(con, rows, keys_path, ids_path, out, max_block_size, max_candi
     con.execute("CREATE OR REPLACE TEMP TABLE ranked AS SELECT qid, entity_id, ROW_NUMBER() OVER (PARTITION BY qid ORDER BY score DESC, entity_id DESC) AS rn FROM scores")
     print(f"  ranked candidates: {time.time()-started:.0f}s", flush=True)
     result = con.execute(f"""
-        SELECT q.qid, COALESCE(string_agg(r.entity_id, ','), '') AS candidates
+        SELECT q.qid, COALESCE(string_agg(r.entity_id, ',' ORDER BY r.rn), '') AS candidates
         FROM qids q LEFT JOIN ranked r ON q.qid = r.qid AND r.rn <= {max_candidates}
         GROUP BY q.ord, q.qid ORDER BY q.ord
     """)
@@ -120,6 +121,15 @@ def main():
                 stats[key] += value
             print(f"{stats['queries']:,} queries; {stats['total_candidates']:,} candidates; {time.time()-start:.0f}s", flush=True)
     con.close()
+    stats["elapsed_seconds"] = round(time.time() - start, 3)
+    stats["settings"] = {
+        "batch_size": args.batch_size,
+        "max_block_size": args.max_block_size,
+        "max_candidates": args.max_candidates,
+        "index": str(args.index.resolve()),
+        "output": str(args.output.resolve()),
+    }
+    stats["exact_generator_command"] = [sys.executable, str(Path(sys.argv[0]).resolve()), *sys.argv[1:]]
     args.output.with_suffix(".stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     print(json.dumps(stats, indent=2))
 
