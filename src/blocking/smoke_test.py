@@ -22,11 +22,15 @@ def main():
         ("S1-2", "Brahma Infosoft Pvt Ltd", "Coimatore Colony, Mysore, Karnataka", "India"),
         ("S1-3", "Marina Ecole France Sarl", "63 Rue de Dieppe, Lille", "France"),
         ("S1-4", "Unique Business", "Somewhere", "US"),
+        ("S1-5", "", "0012 Market Street, Mysore, Karnataka", "India"),
+        ("S1-6", "", "12 Market Street, Mysore, Karnataka", "France"),
     ])
     write(s2, [
         ("S2-1", "ACME ROBOTICS", "2621 Cotten Rd, Tyler", "US"),
         ("S2-2", "Brahma Infosoft", "", "India"),
         ("S2-3", "Marina Ecole France", "63 R. DE DIEPPE, LILLE", "France"),
+        ("S2-4", "", "12 Market St, Mysore, Karnataka", "India"),
+        ("S2-5", "", "12 Market Street, Mysore, Karnataka", "India"),
     ])
     write(s3, [
         ("S3-1", "Acme Robotics Corporation", "Different Address", "US"),
@@ -44,13 +48,17 @@ def main():
         con.close()
     with open(output, encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream, delimiter="\t"))
-    assert len(rows) == 4
-    by_id = {row["source1_entity_id"]: set(filter(None, row["candidate_entity_ids"].split(","))) for row in rows}
+    assert len(rows) == 6
+    ordered = {row["source1_entity_id"]: list(filter(None, row["candidate_entity_ids"].split(","))) for row in rows}
+    by_id = {qid: set(ids) for qid, ids in ordered.items()}
     assert {"S2-1", "S3-1"}.issubset(by_id["S1-1"])
     assert "S2-2" in by_id["S1-2"]
     assert "S2-3" in by_id["S1-3"]
     assert by_id["S1-4"] == set()
-    assert stats["queries"] == 4
+    assert {"S2-4", "S2-5"}.issubset(by_id["S1-5"])
+    assert not by_id["S1-6"]  # Same address across countries must not share a block.
+    assert ordered["S1-5"] == sorted(ordered["S1-5"], reverse=True)  # Stable equal-score tie order.
+    assert stats["queries"] == 6
     print("Blocking smoke test passed")
 
 
