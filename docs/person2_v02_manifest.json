@@ -50,8 +50,11 @@
     "zip_sha256": "15c0281fe8d41b525259751fe9221dfc480937a8e78fc6e480c7645190a3136a"
   },
   "metrics": {
+    "v01_cap200_candidate_pair_recall": 0.9185942076232297,
     "v01_top50_candidate_oracle_macro_f0_5": 0.9422692149481108,
+    "v01_top50_candidate_pair_recall": 0.8724111249455025,
     "v02_top50_candidate_oracle_macro_f0_5": 0.9569071662874394,
+    "v02_top50_candidate_pair_recall": 0.8976501609720907,
     "v02_cap500_candidate_pair_recall": 0.951704,
     "v02_cap500_candidate_oracle_macro_f0_5": 0.982187,
     "v02_cap1000_candidate_pair_recall": 0.9606164988864843,

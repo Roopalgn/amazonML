@@ -20,11 +20,11 @@ The fixed ID file has 441,287 Source-1 IDs (SHA-256 `DBF52E20D318F152AFCA76CE772
 
 | Candidate setting | Links | Max list | Pair recall | Oracle macro F0.5 |
 | --- | ---: | ---: | ---: | ---: |
-| v01, cap 200 | 75,450,093 | 200 | See v01 baseline report | 0.968053 |
+| v01, cap 200 | 75,450,093 | 200 | 0.918594 | 0.968053 |
 | v02, cap 500 | 161,214,669 | 500 | 0.951704 | 0.982187 |
 | v02, cap 1,000 | 251,282,906 | 1,000 | 0.960616 | 0.985621 |
 
-The ordered top-50 prefix is the same for the cap-500 and cap-1,000 files: its oracle macro F0.5 is **0.956907**, compared with **0.942269** for v01. At cap 500, India pair recall is **0.917845** and oracle macro F0.5 is **0.967828**; US pair recall is **0.974305** and oracle macro F0.5 is **0.991749**. At cap 1,000, India is **0.930021 / 0.972952** and US is **0.981039 / 0.994058** for pair recall / oracle macro F0.5.
+The ordered top-50 prefix is the same for the cap-500 and cap-1,000 files: pair recall is **0.897650** and oracle macro F0.5 is **0.956907**, compared with **0.872411 / 0.942269** for v01. At cap 500, India pair recall is **0.917845** and oracle macro F0.5 is **0.967828**; US pair recall is **0.974305** and oracle macro F0.5 is **0.991749**. At cap 1,000, India is **0.930021 / 0.972952** and US is **0.981039 / 0.994058** for pair recall / oracle macro F0.5.
 
 The full cap-1,000 ranked-list evaluation also measured these list-prefix results (pair recall / candidate-oracle macro F0.5):
 
