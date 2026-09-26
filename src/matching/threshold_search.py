@@ -94,7 +94,8 @@ def evaluate_threshold(
             scores,
             threshold=threshold,
             max_matches=max_matches,
-            policy="scored-threshold",
+            # The production scorer ranks by score before applying max_matches.
+            policy="top-k",
         )
         score = f05_score(truth_ids, predicted)
         total += score
