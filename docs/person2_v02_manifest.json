@@ -180,5 +180,47 @@
     },
     "caveat": "Offline fixed-split diagnostic, not an official leaderboard score. Model was not integrated into Person 3's production submission path."
   },
+  "large_block_skip_ablation": {
+    "recommended": false,
+    "version": "person2_v03_bs2000_cap1000_experiment",
+    "branch": "sidhesh_member2_v02",
+    "generator_commit": "285c0517c0ce77aa96e872c11769ed9dbb6821f8",
+    "validation_id_sha256": "dbf52e20d318f152afca76ce77202c75208d46bdb7ffe07d207e72c6adf51cbc",
+    "settings": {
+      "batch_size": 10000,
+      "max_block_size": 2000,
+      "max_candidates": 1000
+    },
+    "exact_command": "py -3.12 src/blocking/generate_candidates_fast.py --source1 data/candidates/person2/validation/validation_source1.tsv --source2 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source2.tsv --source3 dataset/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source3.tsv --index data/candidates/person2/train_index_v02.sqlite --output data/candidates/person2/validation/candidate_pairs_train_validation_v03_bs2000_cap1000.tsv --batch-size 10000 --max-block-size 2000 --max-candidates 1000",
+    "elapsed_seconds": 2254.292,
+    "candidate_file": "data/candidates/person2/validation/candidate_pairs_train_validation_v03_bs2000_cap1000.tsv",
+    "candidate_file_bytes": 4062995353,
+    "candidate_file_sha256": "f92740455ab7a6cd7bce0a11024a457eb5c4baaee0a52dbffb50a85bc8d37033",
+    "candidate_links": 314795807,
+    "maximum_candidates_per_row": 1000,
+    "structural_checks": {
+      "query_rows": 441287,
+      "all_fixed_ids_present_in_order": true,
+      "only_s2_s3_ids": true,
+      "no_duplicate_candidates_per_row": true
+    },
+    "metrics": {
+      "overall_top50_pair_recall": 0.9004578441654,
+      "overall_top50_oracle_macro_f0_5": 0.9586934184508038,
+      "india_top50_pair_recall": 0.8400070645721518,
+      "india_top50_oracle_macro_f0_5": 0.9275549930016287,
+      "us_top50_pair_recall": 0.9408094383533532,
+      "us_top50_oracle_macro_f0_5": 0.9794277226980185,
+      "overall_cap500_pair_recall": 0.9504416749476627,
+      "overall_cap500_oracle_macro_f0_5": 0.9818190033477108,
+      "overall_cap1000_pair_recall": 0.959548152192271,
+      "overall_cap1000_oracle_macro_f0_5": 0.9853207145451065,
+      "india_cap1000_pair_recall": 0.9287459403239892,
+      "india_cap1000_oracle_macro_f0_5": 0.9726163630535615,
+      "us_cap1000_pair_recall": 0.9801089846871275,
+      "us_cap1000_oracle_macro_f0_5": 0.9937802267165663
+    },
+    "comparison_to_v02": "At block size 1000 / cap 1000: 251282906 links and 3244437560 bytes; top-50 oracle 0.956907, cap-500 oracle 0.982187, cap-1000 oracle 0.985621. The 2000-block experiment adds 25.3% link/file volume, slightly improves top-50 oracle, and slightly lowers cap-500 and cap-1000 overall oracle. Not recommended for handoff."
+  },
   "report": "docs/person2_v02_report.md"
 }

@@ -36,6 +36,17 @@ The full cap-1,000 ranked-list evaluation also measured these list-prefix result
 | 200 | 0.937498 | 0.976560 |
 | Full 1,000 | 0.960616 | 0.985621 |
 
+### Large-block skipping ablation
+
+To quantify the effect of the block-size guard, I regenerated the same fixed validation IDs with `--max-block-size 2000 --max-candidates 1000`; all other generator inputs and settings were unchanged. Relative to v02 at block size 1,000 / cap 1,000, this produced 314,795,807 links instead of 251,282,906 (+25.3%) and a 4,062,995,353-byte TSV instead of 3,244,437,560 bytes (+25.3%). Runtime was 2,254 seconds. Structural checks passed for all 441,287 fixed IDs, S2/S3-only targets, no duplicates, and stable row order.
+
+| Setting | Top-50 pair recall | Top-50 oracle macro F0.5 | Cap-500 oracle macro F0.5 | Full cap-1,000 pair recall | Full cap-1,000 oracle macro F0.5 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| v02 block 1,000 | 0.897650 | 0.956907 | 0.982187 | 0.960616 | 0.985621 |
+| block 2,000 experiment | 0.900458 | 0.958693 | 0.981819 | 0.959548 | 0.985321 |
+
+At top 50, the larger block limit modestly improves overall oracle F0.5 by 0.001786 and India by 0.004547 (India top-50 pair recall improves from 0.833727 to 0.840007). But its cap-500 and full cap-1,000 overall oracle scores are slightly lower, and it costs 25.3% more links. Therefore it is **not recommended as the replacement handoff artifact**; v02 cap 500 remains the balanced version. The experiment shows the large-block guard has a small top-50 recall trade-off, not a route to a 0.99+ overall score. Its TSV, stats, bucket report, and structural report are local ignored experiment artifacts, not part of the branch or recommended Drive handoff.
+
 Country oracle macro F0.5 at prefixes 20 / 50 / 100 / 200 / full 1,000 was **India: 0.907239 / 0.923008 / 0.951691 / 0.959874 / 0.972952**, and **US: 0.973929 / 0.979480 / 0.982811 / 0.987670 / 0.994058**. Pair recall at prefix 50 / full 1,000 was **India: 0.833727 / 0.930021**, and **US: 0.940319 / 0.981039**. Across all 441,287 validation queries, 414,800 had at least one retrieved true target.
 
 Cap 500 contains 51,381,645 S2 and 109,833,024 S3 links (31.87% / 68.13%); cap 1,000 contains 105,448,254 S2 and 145,834,652 S3 links (41.96% / 58.04%). At cap 500, true-link recall is 0.945594 for S2 truths and 0.957415 for S3 truths, so S3's larger candidate volume did not crowd out S2 truth retrieval. The cap-500 file is about 2.08 GB uncompressed versus 3.24 GB at cap 1,000. Its companion ZIP is about 934 MB.
