@@ -14,28 +14,45 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
+from math import isfinite
 from pathlib import Path
 from typing import Iterable
 
-from baseline_matcher import parse_id_list, select_matches
+if __package__:
+    from .baseline_matcher import parse_id_list, select_matches
+else:
+    from baseline_matcher import parse_id_list, select_matches
 
 
 def load_validation_ids(path: Path | None) -> set[str] | None:
     if path is None:
         return None
     with path.open(encoding="utf-8", newline="") as handle:
-        return {line.strip() for line in handle if line.strip()}
+        ids = [line.strip() for line in handle if line.strip()]
+    if not ids or len(ids) != len(set(ids)):
+        raise ValueError("Validation IDs must be nonempty and unique")
+    return set(ids)
 
 
 def load_truth(path: Path, validation_ids: set[str] | None) -> dict[str, tuple[str, ...]]:
     truth: dict[str, tuple[str, ...]] = {}
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
+        if reader.fieldnames != ["source1_entity_id", "matched_entity_ids"]:
+            raise ValueError(f"Invalid ground-truth header in {path}")
         for row in reader:
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError(f"Malformed ground-truth row in {path}")
             source1_id = row["source1_entity_id"]
             if validation_ids is not None and source1_id not in validation_ids:
                 continue
+            if not source1_id.startswith("S1-") or source1_id in truth:
+                raise ValueError(f"Invalid or duplicate ground-truth ID: {source1_id!r}")
             truth[source1_id] = parse_id_list(row.get("matched_entity_ids"))
+    if validation_ids is not None and validation_ids - truth.keys():
+        raise ValueError("Validation IDs absent from ground truth")
+    if not truth:
+        raise ValueError("No entities selected for evaluation")
     return truth
 
 
@@ -54,8 +71,12 @@ def load_scores(path: Path, allowed_source1_ids: set[str]) -> dict[str, dict[str
             candidate_id = row["candidate_entity_id"]
             try:
                 score = float(row["score"])
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid score for {source1_id}: {candidate_id}") from exc
+            if not isfinite(score) or not 0.0 <= score <= 1.0:
+                raise ValueError(f"Score must be finite and between 0 and 1: {source1_id}")
+            if not candidate_id.startswith(("S2-", "S3-")) or candidate_id in scores[source1_id]:
+                raise ValueError(f"Invalid or duplicate scored candidate: {source1_id}, {candidate_id}")
             scores[source1_id][candidate_id] = score
     return scores
 
@@ -81,6 +102,10 @@ def evaluate_threshold(
     threshold: float,
     max_matches: int | None,
 ) -> tuple[float, float, float]:
+    if not truth:
+        raise ValueError("No entities selected for evaluation")
+    if scores_by_source1.keys() - truth.keys():
+        raise ValueError("Scored Source-1 IDs absent from evaluation truth")
     total = 0.0
     singleton_total = 0.0
     singleton_count = 0
@@ -112,6 +137,8 @@ def evaluate_threshold(
 
 
 def threshold_grid(start: float, stop: float, step: float) -> list[float]:
+    if not all(isfinite(value) for value in (start, stop, step)) or not 0 <= start <= stop <= 1 or step <= 0:
+        raise ValueError("Require 0 <= start <= stop <= 1 and a finite positive step")
     values: list[float] = []
     current = start
     while current <= stop + 1e-12:

@@ -8,6 +8,7 @@ that should be written to ``matching_results.tsv``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import Iterable, Mapping, Sequence
 
 
@@ -72,6 +73,12 @@ def select_matches(
     - ``top-k``: keep the highest scoring candidates above ``threshold``.
     """
 
+    if policy not in {"empty", "pass-through", "scored-threshold", "top-k"}:
+        raise ValueError(f"Unknown match policy: {policy}")
+    if not isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be finite and between 0 and 1")
+    if max_matches is not None and max_matches < 1:
+        raise ValueError("max_matches must be positive")
     candidates = keep_valid_match_ids(candidate_entity_ids)
     if policy == "empty":
         return ()
@@ -81,15 +88,12 @@ def select_matches(
         return ()
 
     scored = [(entity_id, scores.get(entity_id)) for entity_id in candidates]
+    if any(score is not None and (not isfinite(score) or not 0.0 <= score <= 1.0) for _, score in scored):
+        raise ValueError("Candidate scores must be finite and between 0 and 1")
     above_threshold = [(entity_id, score) for entity_id, score in scored if score is not None and score >= threshold]
 
-    if policy == "scored-threshold":
-        selected = [entity_id for entity_id, _ in above_threshold]
-    elif policy == "top-k":
-        ranked = sorted(above_threshold, key=lambda item: (-item[1], item[0]))
-        selected = [entity_id for entity_id, _ in ranked]
-    else:
-        raise ValueError(f"Unknown match policy: {policy}")
+    ranked = sorted(above_threshold, key=lambda item: (-item[1], item[0]))
+    selected = [entity_id for entity_id, _ in ranked]
 
     if max_matches is not None:
         selected = selected[:max_matches]

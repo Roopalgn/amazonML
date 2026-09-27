@@ -100,8 +100,7 @@ def generate(con, query_path, output_path, max_block_size, max_candidates, max_q
                 stats["capped_queries"] += 1
                 selected = [item[0] for item in heapq.nlargest(max_candidates, hits.items(), key=lambda item: (item[1], item[0]))]
             else:
-                selected = list(hits)
-            selected.sort()
+                selected = sorted(hits, key=lambda target_id: (hits[target_id], target_id), reverse=True)
             writer.writerow([qid, ",".join(selected)])
             stats["queries"] += 1
             stats["with_candidates"] += bool(selected)

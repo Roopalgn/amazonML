@@ -61,7 +61,7 @@ def process_batch(con, rows, keys_path, ids_path, out, max_block_size, max_candi
     con.execute("CREATE OR REPLACE TEMP TABLE ranked AS SELECT qid, entity_id, ROW_NUMBER() OVER (PARTITION BY qid ORDER BY score DESC, entity_id DESC) AS rn FROM scores")
     print(f"  ranked candidates: {time.time()-started:.0f}s", flush=True)
     result = con.execute(f"""
-        SELECT q.qid, COALESCE(string_agg(r.entity_id, ','), '') AS candidates
+        SELECT q.qid, COALESCE(string_agg(r.entity_id, ',' ORDER BY r.rn), '') AS candidates
         FROM qids q LEFT JOIN ranked r ON q.qid = r.qid AND r.rn <= {max_candidates}
         GROUP BY q.ord, q.qid ORDER BY q.ord
     """)
