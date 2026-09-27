@@ -15,9 +15,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import shutil
+import os
 import sqlite3
 import sys
+import tempfile
+from contextlib import ExitStack, closing, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -29,7 +31,7 @@ for path in (BLOCKING_ROOT, MATCHING_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from baseline_matcher import format_id_list, keep_valid_match_ids, parse_id_list
+from baseline_matcher import format_id_list, select_matches
 from block_keys import LEGAL, normalize
 
 
@@ -64,6 +66,8 @@ def iter_source(path: Path):
         if missing:
             raise ValueError(f"{path} missing required column(s): {sorted(missing)}")
         for row in reader:
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError(f"Malformed source row in {path}")
             yield row
 
 
@@ -196,12 +200,17 @@ def ensure_target_store(con: sqlite3.Connection, source2: Path, source3: Path, r
 def load_source1_features(path: Path) -> dict[str, RecordFeatures]:
     records: dict[str, RecordFeatures] = {}
     for row in iter_source(path):
+        entity_id = row["entity_id"]
+        if not entity_id.startswith("S1-") or entity_id != entity_id.strip() or entity_id in records:
+            raise ValueError(f"Invalid or duplicate Source-1 ID: {entity_id!r}")
         records[row["entity_id"]] = make_features(
             row["entity_id"],
             row["business_name"],
             row["business_address"],
             row["country"],
         )
+    if not records:
+        raise ValueError("Source-1 roster is empty")
     return records
 
 
@@ -223,15 +232,75 @@ def fetch_targets(con: sqlite3.Connection, candidate_ids: set[str]) -> dict[str,
     return result
 
 
+def require_target_ids(con: sqlite3.Connection, candidate_ids: set[str]) -> None:
+    """Check unscored input IDs without loading or normalizing their text."""
+
+    ordered = sorted(candidate_ids)
+    for start in range(0, len(ordered), 800):
+        chunk = ordered[start : start + 800]
+        placeholders = ",".join("?" for _ in chunk)
+        found = {row[0] for row in con.execute(
+            f"SELECT entity_id FROM target_records WHERE entity_id IN ({placeholders})", chunk
+        )}
+        missing = set(chunk) - found
+        if missing:
+            raise ValueError(f"Unknown target IDs, e.g. {sorted(missing)[:5]}")
+
+
 def iter_candidate_rows(path: Path):
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        required = {"source1_entity_id", "candidate_entity_ids"}
-        missing = required - set(reader.fieldnames or [])
-        if missing:
-            raise ValueError(f"{path} missing required column(s): {sorted(missing)}")
+        if reader.fieldnames != ["source1_entity_id", "candidate_entity_ids"]:
+            raise ValueError(f"Invalid candidate header in {path}")
         for row in reader:
-            yield row["source1_entity_id"], keep_valid_match_ids(parse_id_list(row.get("candidate_entity_ids")))
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError(f"Malformed candidate row in {path}")
+            source1_id = row["source1_entity_id"]
+            value = row["candidate_entity_ids"]
+            ids = tuple(value.split(",")) if value else ()
+            if len(ids) != len(set(ids)) or any(
+                not entity_id.startswith(("S2-", "S3-")) or entity_id != entity_id.strip()
+                for entity_id in ids
+            ):
+                raise ValueError(f"Invalid or duplicate candidate IDs for {source1_id!r}")
+            yield source1_id, ids
+
+
+def promote_outputs(staged: dict[Path, Path]) -> None:
+    """Replace completed files, restoring prior outputs if publication raises.
+
+    Renames are atomic per file, not across the entire group or a process crash.
+    Backups stay beside their destinations so rollback uses same-volume renames.
+    """
+
+    backups: dict[Path, Path] = {}
+    promoted: set[Path] = set()
+    try:
+        for destination, temporary in staged.items():
+            if destination.exists():
+                backup = temporary.with_suffix(".backup")
+                destination.replace(backup)
+                backups[destination] = backup
+            temporary.replace(destination)
+            promoted.add(destination)
+    except BaseException as exc:
+        failures = []
+        for destination in reversed(staged):
+            try:
+                if destination in backups:
+                    backups[destination].replace(destination)
+                elif destination in promoted:
+                    destination.unlink()
+            except OSError:
+                failures.append(str(backups.get(destination, destination)))
+        if failures:
+            raise RuntimeError(f"Publication rollback failed; recovery files retained: {failures}") from exc
+        raise
+    else:
+        # Publication succeeded; a leftover backup must not turn it into failure.
+        for backup in backups.values():
+            with suppress(OSError):
+                backup.unlink()
 
 
 def write_scored_outputs(
@@ -249,46 +318,71 @@ def write_scored_outputs(
     rebuild_target_store: bool,
     scores_output: Path | None,
 ) -> dict[str, int | float | str]:
-    con = connect_store(target_store)
+    select_matches((), threshold=threshold, max_matches=max_matches)
+    if batch_size < 1 or (score_candidate_limit is not None and score_candidate_limit < 1):
+        raise ValueError("batch_size and score_candidate_limit must be positive")
+    matching_path = output_dir / "matching_results.tsv"
+    candidate_path = output_dir / "candidate_pairs.tsv"
+    stats_path = output_dir / "person3_scored_outputs.stats.json"
+    destinations = [matching_path, candidate_path, stats_path]
+    if scores_output is not None:
+        destinations.append(scores_output)
+    resolved = [path.resolve() for path in destinations]
+    if len(set(resolved)) != len(resolved):
+        raise ValueError("Output paths must be distinct")
+    protected = {path.resolve() for path in (source1, source2, source3, target_store)}
+    if candidate_input.resolve() in protected:
+        raise ValueError("Candidate input must be separate from source files and target store")
+    for path in destinations:
+        if path.resolve() in protected or (path.exists() and not path.is_file()):
+            raise ValueError(f"Invalid output destination: {path}")
+        if path.resolve() == candidate_input.resolve() and path != candidate_path:
+            raise ValueError("Only candidate output may replace candidate input")
+
+    staged: dict[Path, Path] = {}
+    stats = {
+        "rows": 0,
+        "candidate_links": 0,
+        "matched_links": 0,
+        "rows_with_candidates": 0,
+        "rows_with_matches": 0,
+        "missing_source1_rows": 0,
+        "missing_target_links": 0,
+        "threshold": threshold,
+        "score_candidate_limit": score_candidate_limit or 0,
+        "candidate_input": str(candidate_input),
+    }
     try:
-        ensure_target_store(con, source2, source3, rebuild_target_store)
-        source1_features = load_source1_features(source1)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        matching_path = output_dir / "matching_results.tsv"
-        candidate_path = output_dir / "candidate_pairs.tsv"
-        if candidate_input.resolve() != candidate_path.resolve():
-            print(f"Copying candidate file to {candidate_path}", flush=True)
-            shutil.copyfile(candidate_input, candidate_path)
-
-        score_handle = None
-        score_writer = None
-        if scores_output is not None:
-            scores_output.parent.mkdir(parents=True, exist_ok=True)
-            score_handle = scores_output.open("w", encoding="utf-8", newline="")
-            score_writer = csv.writer(score_handle, delimiter="\t", lineterminator="\n")
-            score_writer.writerow(["source1_entity_id", "candidate_entity_id", "score"])
-
-        stats = {
-            "rows": 0,
-            "candidate_links": 0,
-            "matched_links": 0,
-            "rows_with_candidates": 0,
-            "rows_with_matches": 0,
-            "missing_source1_rows": 0,
-            "missing_target_links": 0,
-            "threshold": threshold,
-            "score_candidate_limit": score_candidate_limit or 0,
-            "candidate_input": str(candidate_input),
-        }
-
-        try:
-            with matching_path.open("w", encoding="utf-8", newline="") as match_handle:
-                match_writer = csv.writer(match_handle, delimiter="\t", lineterminator="\n")
+        with closing(connect_store(target_store)) as con:
+            ensure_target_store(con, source2, source3, rebuild_target_store)
+            source1_features = load_source1_features(source1)
+            with ExitStack() as stack:
+                handles = {}
+                for destination in destinations:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    fd, name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
+                    staged[destination] = Path(name)
+                    os.close(fd)
+                    handles[destination] = stack.enter_context(staged[destination].open("w", encoding="utf-8", newline=""))
+                match_writer = csv.writer(handles[matching_path], delimiter="\t", lineterminator="\n")
+                candidate_writer = csv.writer(handles[candidate_path], delimiter="\t", lineterminator="\n")
                 match_writer.writerow(["source1_entity_id", "matched_entity_ids"])
-
+                candidate_writer.writerow(["source1_entity_id", "candidate_entity_ids"])
+                score_writer = None
+                if scores_output is not None:
+                    score_writer = csv.writer(handles[scores_output], delimiter="\t", lineterminator="\n")
+                    score_writer.writerow(["source1_entity_id", "candidate_entity_id", "score"])
+                seen: set[str] = set()
                 batch: list[tuple[str, tuple[str, ...]]] = []
-                for item in iter_candidate_rows(candidate_input):
-                    batch.append(item)
+                rows = iter_candidate_rows(candidate_input)
+                stack.callback(rows.close)
+                for source1_id, candidates in rows:
+                    if source1_id not in source1_features:
+                        raise ValueError(f"Unknown Source-1 ID: {source1_id!r}")
+                    if source1_id in seen:
+                        raise ValueError(f"Duplicate Source-1 candidate row: {source1_id!r}")
+                    seen.add(source1_id)
+                    batch.append((source1_id, candidates))
                     if len(batch) >= batch_size:
                         process_batch(
                             batch,
@@ -300,6 +394,7 @@ def write_scored_outputs(
                             max_matches,
                             score_candidate_limit,
                             stats,
+                            candidate_writer,
                         )
                         batch.clear()
                         if int(stats["rows"]) % 10000 == 0:
@@ -315,14 +410,15 @@ def write_scored_outputs(
                         max_matches,
                         score_candidate_limit,
                         stats,
+                        candidate_writer,
                     )
-        finally:
-            if score_handle is not None:
-                score_handle.close()
+                if len(seen) != len(source1_features):
+                    raise ValueError(f"Missing candidate rows for {len(source1_features) - len(seen)} Source-1 IDs")
+                json.dump(stats, handles[stats_path], indent=2)
+        promote_outputs(staged)
     finally:
-        con.close()
-
-    (output_dir / "person3_scored_outputs.stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
     return stats
 
 
@@ -336,42 +432,48 @@ def process_batch(
     max_matches: int | None,
     score_candidate_limit: int | None,
     stats: dict[str, int | float | str],
+    candidate_writer=None,
 ) -> None:
+    # Validate even candidates beyond the scoring limit; never hide broken IDs.
     candidate_ids = {
+        candidate_id
+        for _, ids in batch
+        for candidate_id in ids
+    }
+    scored_ids = {
         candidate_id
         for _, ids in batch
         for candidate_id in (ids[:score_candidate_limit] if score_candidate_limit is not None else ids)
     }
-    target_features = fetch_targets(con, candidate_ids)
+    require_target_ids(con, candidate_ids - scored_ids)
+    target_features = fetch_targets(con, scored_ids)
+    missing = scored_ids - target_features.keys()
+    if missing:
+        raise ValueError(f"Unknown target IDs, e.g. {sorted(missing)[:5]}")
     for source1_id, candidates in batch:
         source = source1_features.get(source1_id)
         if source is None:
-            stats["missing_source1_rows"] = int(stats["missing_source1_rows"]) + 1
-            match_writer.writerow([source1_id, ""])
-            continue
+            raise ValueError(f"Unknown Source-1 ID: {source1_id!r}")
 
-        scored: list[tuple[str, float]] = []
+        scored: dict[str, float] = {}
         scored_candidates = candidates[:score_candidate_limit] if score_candidate_limit is not None else candidates
         for candidate_id in scored_candidates:
-            target = target_features.get(candidate_id)
-            if target is None:
-                stats["missing_target_links"] = int(stats["missing_target_links"]) + 1
-                continue
+            target = target_features[candidate_id]
             score = score_pair(source, target)
-            scored.append((candidate_id, score))
+            scored[candidate_id] = score
             if score_writer is not None:
-                score_writer.writerow([source1_id, candidate_id, f"{score:.6f}"])
+                score_writer.writerow([source1_id, candidate_id, repr(score)])
 
-        selected = [candidate_id for candidate_id, score in sorted(scored, key=lambda item: (-item[1], item[0])) if score >= threshold]
-        if max_matches is not None:
-            selected = selected[:max_matches]
+        selected = select_matches(scored_candidates, scored, threshold=threshold, max_matches=max_matches, policy="scored-threshold")
 
         match_writer.writerow([source1_id, format_id_list(selected)])
+        if candidate_writer is not None:
+            candidate_writer.writerow([source1_id, format_id_list(scored_candidates)])
 
         stats["rows"] = int(stats["rows"]) + 1
-        stats["candidate_links"] = int(stats["candidate_links"]) + len(candidates)
+        stats["candidate_links"] = int(stats["candidate_links"]) + len(scored_candidates)
         stats["matched_links"] = int(stats["matched_links"]) + len(selected)
-        stats["rows_with_candidates"] = int(stats["rows_with_candidates"]) + int(bool(candidates))
+        stats["rows_with_candidates"] = int(stats["rows_with_candidates"]) + int(bool(scored_candidates))
         stats["rows_with_matches"] = int(stats["rows_with_matches"]) + int(bool(selected))
 
 
@@ -389,7 +491,7 @@ def main() -> int:
         "--score-candidate-limit",
         type=int,
         default=None,
-        help="Only score the first N candidate IDs per S1 row while preserving the full candidate list in output/candidate_pairs.tsv.",
+        help="Score and export only the first N candidate IDs per S1 row; input order must reflect the intended shortlist.",
     )
     parser.add_argument("--batch-size", type=int, default=2000)
     parser.add_argument("--rebuild-target-store", action="store_true")
