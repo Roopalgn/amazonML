@@ -5,7 +5,6 @@ The index is built once per split, then reused. No external data or API is used.
 
 import argparse
 import csv
-import heapq
 import json
 import sqlite3
 import time
@@ -71,7 +70,11 @@ def finish_index(con, target_paths, count):
     print(f"Indexed {count:,} target rows", flush=True)
 
 
-KEY_WEIGHTS = {"name": 5, "address": 5, "pair": 3, "postal": 2, "number": 2, "locality": 2, "addressnum": 2, "prefixaddr": 1}
+KEY_WEIGHTS = {
+    "name": 5, "address": 5, "pair": 3, "postal": 2, "number": 2,
+    "locality": 2, "addressnum": 2, "addr_postal": 2,
+    "addr_locality": 2, "addr_token": 1, "prefixaddr": 1,
+}
 
 
 def generate(con, query_path, output_path, max_block_size, max_candidates, max_queries=None):
@@ -96,13 +99,15 @@ def generate(con, query_path, output_path, max_block_size, max_candidates, max_q
                 weight = KEY_WEIGHTS[key.split("|", 2)[1]]
                 for (target_id,) in rows:
                     hits[target_id] = hits.get(target_id, 0) + weight
+            # Keep the serialized order identical to deterministic top-K rank.
+            # Ties break by descending target ID, matching the fast SQL path.
+            ranked = sorted(hits.items(), key=lambda item: (item[1], item[0]), reverse=True)
             if len(hits) > max_candidates:
                 stats["capped_queries"] += 1
-                selected = [item[0] for item in heapq.nlargest(max_candidates, hits.items(), key=lambda item: (item[1], item[0]))]
+                selected = ranked[:max_candidates]
             else:
-                selected = list(hits)
-            selected.sort()
-            writer.writerow([qid, ",".join(selected)])
+                selected = ranked
+            writer.writerow([qid, ",".join(entity_id for entity_id, _ in selected)])
             stats["queries"] += 1
             stats["with_candidates"] += bool(selected)
             stats["total_candidates"] += len(selected)
